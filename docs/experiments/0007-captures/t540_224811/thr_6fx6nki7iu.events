@@ -1,0 +1,3 @@
+{"t":"22:46:04","type":"provider/error","st":null,"d":"Reconnecting... waiting for network\nConnection failed: error sending request","retry":true}
+{"t":"22:46:47","type":"provider/error","st":null,"d":"Reconnecting... waiting for network\nConnection failed: error sending request","retry":true}
+{"t":"22:47:50","type":"provider/error","st":null,"d":"Reconnecting... waiting for network\nConnection failed: error sending request","retry":true}

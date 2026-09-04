@@ -1,0 +1,3 @@
+API Error: Connection lost mid-response. The response above may be incomplete.
+❯
+⏵⏵ bypass permissions on (shift+tab to cycle)

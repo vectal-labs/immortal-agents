@@ -1,0 +1,3 @@
+{"t":"22:42:35","type":"provider/error","st":null,"d":"Claude Code API retry 8/10 after 39486ms: unknown","retry":true}
+{"t":"22:43:14","type":"provider/error","st":null,"d":"Claude Code API retry 9/10 after 33328ms: unknown","retry":true}
+{"t":"22:43:47","type":"provider/error","st":null,"d":"Claude Code API retry 10/10 after 34541ms: unknown","retry":true}

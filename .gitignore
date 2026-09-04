@@ -1,0 +1,9 @@
+__pycache__/
+.pytest_cache/
+.DS_Store
+*.pyc
+outage-runs/
+docs/private/
+docs/experiments/*-captures/*snapshots.log
+docs/experiments/*-captures/workdir*/
+docs/experiments/*_staged_at.txt
