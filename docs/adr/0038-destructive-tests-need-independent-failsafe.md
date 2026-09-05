@@ -9,7 +9,7 @@ specifically (netguard + restore timer). The pattern is general.
 
 ## Decision
 
-Any test that turns something off on David's Mac — network, a daemon, a
+Any test that turns something off on the operator's Mac — network, a daemon, a
 device, a setting — must have a recovery that runs even if the test process,
 the agent, and the terminal all die (David, 2026-09-02). Two requirements:
 

@@ -1,10 +1,10 @@
 # Experiment 0004 — Results: Codex dies at ~5 min, "keep going" revives it
 
 Date: 2026-08-26/27. Real all-route cut of 900s (`OUTAGE_SECS=900`),
-David-authorized, agent-armed. Three identical fresh Codex v0.149 sessions
-(`gpt-5.6-sol high fast`, cwd ~/project) mid-task on a 12-rewrite essay job. An
+operator-authorized, agent-armed. Three identical fresh Codex v0.149 sessions
+(`gpt-5.6-sol high fast`, cwd ~/code) mid-task on a 12-rewrite essay job. An
 offline-safe snapshotter (`0004-capture.sh`) recorded pane text, rollout tails,
-and a probe every 60s; captures in `0004-captures/`.
+and a probe every 60s; synthetic stand-ins for the captures are in `0004-captures/`.
 
 ## Timeline (UTC, 2026-08-26)
 

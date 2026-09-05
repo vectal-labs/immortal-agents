@@ -1,7 +1,7 @@
 # Experiment 0013 — Pi revive after a real Wi-Fi pause (cmux)
 
 Date: 2026-09-03. First live cut aimed at Pi (`detect_pi.py`, commit
-`8d5bf26`). David flipped the Wi-Fi radio off by hand. Watcher ran
+`8d5bf26`). The operator flipped the Wi-Fi radio off by hand. Watcher ran
 unattended under launchd. Human flip, so ADR 0037 does not apply.
 
 Goal: prove the watcher revives a Pi session that dies mid-task, and
@@ -16,7 +16,7 @@ revives only that one. Also record Pi's real death fingerprints.
 - Both Pi panes shared cwd
   `docs/experiments/0013-captures/workdir`, so they share one Pi
   session folder.
-- Watcher pid 13838, probe 10s, threshold 120s, imports `detect_pi`.
+- Watcher under launchd, probe 10s, threshold 120s, imports `detect_pi`.
 - Capture: `docs/experiments/0013-capture.sh` →
   `docs/experiments/0013-captures/snapshots.log`.
 - Staged at `2026-09-03T09:00:27Z`.

@@ -1,3 +1,0 @@
-■ unexpected status 502 Bad Gateway: Provider unreachable: Unable to connect.
-Is the computer able to access the url?
-› Ask Codex to do anything

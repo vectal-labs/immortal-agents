@@ -1,5 +1,5 @@
 #!/bin/bash
-# David runs this HIMSELF, in a foreground terminal (ADR 0020). Agents never run it.
+# The operator runs this, in a foreground terminal (ADR 0020/0037). Agents never run it unattended.
 # Incident 0001: this script must never leave the Mac offline. So it only
 # flips reversible knobs: Wi-Fi radio power and Tailscale. It never touches
 # `networksetup -setnetworkserviceenabled` (persistent, greys out Wi-Fi, survives
@@ -43,7 +43,7 @@ probe_code() {
 case "$(ps -o comm= -p "$PPID" 2>/dev/null)" in
   *launchd*) abort "refusing to run under launchd" ;;
 esac
-launchctl list 2>/dev/null | grep -q "com.davidondrej.netguard" \
+launchctl list 2>/dev/null | grep -q "com.immortal-agents.netguard" \
   || abort "netguard LaunchAgent is not loaded (see docs/launchd.md)"
 TIMER="$STATE_DIR/restore-timer.json"
 timer_pid="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("pid",""))' "$TIMER" 2>/dev/null || true)"

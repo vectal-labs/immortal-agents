@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.immortal-agents.watcher</string>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/opt/homebrew/bin/python3</string>
+		<string>/Users/operator/code/immortal-agents/watcher.py</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>/Users/operator/code/immortal-agents</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>CMUX_QUIET</key>
+		<string>1</string>
+		<key>WATCHER_STATE_DIR</key>
+		<string>/Users/operator/.immortal-agents</string>
+	</dict>
+	<key>StandardOutPath</key>
+	<string>/Users/operator/.immortal-agents/stdout.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/operator/.immortal-agents/stderr.log</string>
+</dict>
+</plist>

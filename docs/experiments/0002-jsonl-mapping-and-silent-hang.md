@@ -1,12 +1,12 @@
 # Experiment 0002 — JSONL mapping fix live + silent-hang hunt
 
-Date: 2026-08-23. Second real all-route outage (ADR 0026 stage 2), David-authorized,
+Date: 2026-08-23. Second real all-route outage (ADR 0026 stage 2), operator-authorized,
 armed detached with a 45s fuse. Script: `0001-run-outage.sh` (post bash-3.2 fix).
 
 ## Setup
 
 Three fresh Claude Code sessions (Opus 5, medium effort, bypass mode) in the
-cmux OFFLINE_TEST workspace, all sharing cwd `/Users/user/project` — the exact
+cmux OFFLINE_TEST workspace, all sharing cwd `~/code` — the exact
 cross-contamination scenario from experiment 0001's flaw:
 
 - **surface:13** — mid-task: multi-rewrite essay (aviation), streaming when cut
@@ -29,9 +29,9 @@ was needed to hold a foreground tool call.
 
 | surface | transcript | decision |
 |---|---|---|
-| 13 | `f6a2c43f….jsonl` | resume (all_three_agree) ✅ |
-| 14 | `5416ec49….jsonl` | resume (all_three_agree) ✅ |
-| 15 | `e4b2d426….jsonl` | skip (jsonl_not_api_error) ✅ |
+| 13 | `sess-0002-a.jsonl` | resume (all_three_agree) ✅ |
+| 14 | `sess-0002-b.jsonl` | resume (all_three_agree) ✅ |
+| 15 | `sess-0002-c.jsonl` | skip (jsonl_not_api_error) ✅ |
 | 16 | none | skip (no_jsonl) ✅ |
 
 Both resumed sessions continued their essays to v4+ after "keep going".

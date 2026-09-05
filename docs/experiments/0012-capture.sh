@@ -40,7 +40,7 @@ if hs:
 "
     T=$(ls ~/.cursor/projects/*/agent-transcripts/$CID/*.jsonl 2>/dev/null | head -1)
     echo "--- transcript: ${T:-none} lines=$( [ -n "$T" ] && wc -l < "$T" ) last=$( [ -n "$T" ] && tail -c 200 "$T" | tr -d '\n' | cut -c1-160)"
-    echo "--- hooks: $(wc -l < ~/.example-hooks/cursor-hooks.jsonl) lines; last: $(tail -1 ~/.example-hooks/cursor-hooks.jsonl | cut -c1-150)"
+    echo "--- hooks: $(wc -l < ~/.label-agent-stops/cursor-hooks.jsonl) lines; last: $(tail -1 ~/.label-agent-stops/cursor-hooks.jsonl | cut -c1-150)"
     echo "--- windows: $(osascript -e 'tell application "System Events" to tell process "Cursor" to return name of every window' 2>&1 | cut -c1-160)"
   } >> "$LOG" 2>&1
   sleep 20

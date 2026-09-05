@@ -4,7 +4,7 @@
 
 Incident 0001: an agent launched the outage script via `launchctl submit`,
 which restarted it in a loop, and the script disabled network services — a
-persistent setting that survived a reboot and greyed out Wi-Fi. David was
+persistent setting that survived a reboot and greyed out Wi-Fi. The operator was
 offline for 25 minutes with no way to talk to the agent. ADR 0020 banned
 agent-launched cuts entirely, but that blocks the fast test loop David wants.
 
@@ -17,7 +17,7 @@ hold:
    `tailscale down`. Never `networksetup -setnetworkserviceenabled … off`,
    never edits to network preferences, never anything that survives a reboot.
 2. **netguard is verified running first.** `launchctl list | grep netguard`
-   must show the every-2-minutes watchdog (`ops/launchd/netguard.sh`) loaded, and
+   must show the every-2-minutes watchdog (`launchd/netguard.sh`) loaded, and
    the cut must write `cut-armed.json` with a deadline so netguard restores
    after it.
 3. **A one-time restore timer is armed before the cut**, in a process that

@@ -1,12 +1,12 @@
 # 0001 — Wi-Fi kill on Claude Code CLI (cmux)
 
-Date: 2026-08-21. Agent: Claude Code CLI 2.1.237 in cmux workspace `wifi-kill-exp` (`surface:12`). Session `bfca6ae7-4e91-483d-a773-a87702fdeb45`. JSONL: `~/.claude/projects/-private-tmp-offline-agent-restart-scratch-wifi-kill-exp/bfca6ae7-4e91-483d-a773-a87702fdeb45.jsonl`. Raw snapshots: [0001-captures/](0001-captures/).
+Date: 2026-08-21. Agent: Claude Code CLI 2.1.237 in cmux workspace `wifi-kill-exp` (`surface:12`). Session `sess-0001-claude`. JSONL: `~/.claude/projects/-private-tmp-offline-agent-restart-scratch-wifi-kill-exp/sess-0001-claude.jsonl`. Synthetic fixtures (raw captures removed before open-sourcing): [0001-captures/](0001-captures/).
 
 ## Setup
 
 Task: implement `maze_solver` (generator, A*/BFS, CLI, 25+ tests) in `/tmp/offline-agent-restart-scratch/wifi-kill-exp`. Mid-turn state at cut: streaming (`Catapulting… thinking with xhigh effort`) after one local bash tool call.
 
-This Mac's default route is USB ethernet `en14` (AX88179B), and `en0` Wi-Fi also has internet. `networksetup -setairportpower en0 off` alone would not drop the API. The outage disabled Wi-Fi plus AX88179B / AX88179A / USB 10/100/1000 LAN, then re-enabled all of them. Probe during outage: `curl` to `http://captive.apple.com/hotspot-detect.html` failed (`http_code=000`).
+This Mac's default route was a USB ethernet adapter, and `en0` Wi-Fi also had internet. `networksetup -setairportpower en0 off` alone would not drop the API. The outage disabled Wi-Fi plus every USB ethernet service, then re-enabled all of them. Probe during outage: `curl` to `http://captive.apple.com/hotspot-detect.html` failed (`http_code=000`).
 
 cmux was not running at the start of this work and its socket is `cmuxOnly` by default, so a LaunchAgent cannot talk to panes until Settings → Automation → socket control mode is `automation`.
 

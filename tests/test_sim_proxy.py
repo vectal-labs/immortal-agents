@@ -20,7 +20,7 @@ from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parent.parent
-SPEC = importlib.util.spec_from_file_location("sim_proxy", ROOT / "immortal" / "sim" / "proxy.py")
+SPEC = importlib.util.spec_from_file_location("sim_proxy", ROOT / "sim" / "proxy.py")
 assert SPEC and SPEC.loader
 proxy = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(proxy)

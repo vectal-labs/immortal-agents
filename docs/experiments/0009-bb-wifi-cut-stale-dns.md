@@ -1,6 +1,6 @@
 # Experiment 0009 — bb revive after a real Wi-Fi cut; stale DNS kills it again
 
-Date: 2026-09-02. Second real cut for the bb host (ADR 0036). David flipped
+Date: 2026-09-02. Second real cut for the bb host (ADR 0036). The operator flipped
 Wi-Fi off by hand for 9.7 min. Watcher ran unattended under launchd. No
 netguard needed: a human flip, not an agent-driven cut (ADR 0037 does not apply).
 

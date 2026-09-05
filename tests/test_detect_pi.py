@@ -9,17 +9,17 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from immortal.detect import pi as detect_pi
-from immortal.core import procs
-import revive
+import detect_pi
+import procs
+import watcher
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "pi"
 DEAD_FILE = (
     FIXTURES
-    / "--Users-user-project--"
-    / "2026-08-31T19-50-24-403Z_01a0595f-7993-7617-b70d-2223d42e53ef.jsonl"
+    / "--Users-operator-code--"
+    / "2026-08-31T19-50-24-403Z_sess-pi-0002.jsonl"
 )
-CWD = "/Users/user/project"
+CWD = "/Users/operator/code"
 
 
 def session_lines(last_message):
@@ -42,7 +42,7 @@ def session_lines(last_message):
 
 class EncodeCwdTests(unittest.TestCase):
     def test_wraps_slashes_as_pi_folder_name(self):
-        self.assertIn("--Users-user-project--", detect_pi.encode_cwd(CWD))
+        self.assertIn("--Users-operator-code--", detect_pi.encode_cwd(CWD))
 
 
 class PaneTests(unittest.TestCase):
@@ -56,9 +56,9 @@ class PaneTests(unittest.TestCase):
         self.assertEqual(detect_pi.classify_pane(screen), "other")
 
     def test_pane_markers_identify_pi(self):
-        self.assertTrue(detect_pi.is_pane("π - code"))
-        self.assertTrue(detect_pi.is_pane("↑12.3k ↓4.5k  2.1%/200k  superdeepseek"))
-        self.assertFalse(detect_pi.is_pane("ask codex"))
+        self.assertTrue(detect_pi.is_pi_pane("π - code"))
+        self.assertTrue(detect_pi.is_pi_pane("↑12.3k ↓4.5k  2.1%/200k  superdeepseek"))
+        self.assertFalse(detect_pi.is_pi_pane("ask codex"))
 
 
 class ProcsTests(unittest.TestCase):
@@ -79,8 +79,7 @@ class EvaluateTests(unittest.TestCase):
     def test_dead_session_inside_outage_resumes(self):
         self.assertTrue(DEAD_FILE.is_file())
         decision, reasons, info = detect_pi.evaluate(
-            {"cwd": CWD}, "Error: Connection error.",
-            ("2026-08-31T19:50:00Z", "2026-08-31T19:52:00Z"),
+            CWD, "network_error", "2026-08-31T19:50:00Z", "2026-08-31T19:52:00Z"
         )
         self.assertEqual(decision, "resume")
         self.assertIn("all_three_agree", reasons)
@@ -88,8 +87,7 @@ class EvaluateTests(unittest.TestCase):
 
     def test_error_before_outage_skips_stale(self):
         decision, reasons, _ = detect_pi.evaluate(
-            {"cwd": CWD}, "Error: Connection error.",
-            ("2026-08-31T19:52:00Z", "2026-08-31T20:00:00Z"),
+            CWD, "network_error", "2026-08-31T19:52:00Z", "2026-08-31T20:00:00Z"
         )
         self.assertEqual(decision, "skip")
         self.assertIn("stale_error", reasons)
@@ -98,7 +96,7 @@ class EvaluateTests(unittest.TestCase):
 class SyntheticEvaluateTests(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
-        folder = self.tmp / "--Users-user-project--"
+        folder = self.tmp / "--Users-operator-code--"
         folder.mkdir()
         self.path = folder / "session.jsonl"
         self.enterContext(mock.patch.object(detect_pi, "PI_SESSIONS", self.tmp))
@@ -108,10 +106,7 @@ class SyntheticEvaluateTests(unittest.TestCase):
 
     def eval_dead_pane(self, last_message):
         self.write(last_message)
-        return detect_pi.evaluate(
-            {"cwd": CWD}, "Error: Connection error.",
-            ("2026-08-31T19:50:00Z", "2026-08-31T19:52:00Z"),
-        )
+        return detect_pi.evaluate(CWD, "network_error", "2026-08-31T19:50:00Z", "2026-08-31T19:52:00Z")
 
     def test_user_message_after_error_skips_resumed(self):
         error = {
@@ -130,8 +125,7 @@ class SyntheticEvaluateTests(unittest.TestCase):
         }
         self.path.write_text(session_lines(error) + json.dumps(user) + "\n")
         decision, reasons, _ = detect_pi.evaluate(
-            {"cwd": CWD}, "Error: Connection error.",
-            ("2026-08-31T19:50:00Z", "2026-08-31T19:52:00Z"),
+            CWD, "network_error", "2026-08-31T19:50:00Z", "2026-08-31T19:52:00Z"
         )
         self.assertEqual(decision, "skip")
         self.assertIn("already_resumed", reasons)
@@ -162,9 +156,9 @@ class SyntheticEvaluateTests(unittest.TestCase):
 
 class WatcherHarnessTests(unittest.TestCase):
     def test_title_and_footer_identify_pi(self):
-        self.assertEqual(revive.detect_harness("", "π - code"), ("pi", "surface_title"))
-        self.assertEqual(revive.detect_harness("↑12.3k ↓4.5k  2.1%/200k", "~"), ("pi", "pane_text"))
-        self.assertEqual(revive.detect_harness("", "~", "pi"), ("pi", "process"))
+        self.assertEqual(watcher.detect_harness("", "π - code"), ("pi", "surface_title"))
+        self.assertEqual(watcher.detect_harness("↑12.3k ↓4.5k  2.1%/200k", "~"), ("pi", "pane_text"))
+        self.assertEqual(watcher.detect_harness("", "~", "pi"), ("pi", "process"))
 
 
 if __name__ == "__main__":

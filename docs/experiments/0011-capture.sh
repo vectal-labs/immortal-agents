@@ -2,7 +2,7 @@
 # Experiment 0011: snapshot three Cursor CLI sessions (cmux, Terminal.app, bb ACP)
 # every 20s so we can see exactly how each one dies and what is left on disk.
 # Usage: bash docs/experiments/0011-capture.sh <minutes> <bb-thread-id> <cmux-surface> <terminal-tty>
-MIN=${1:-45}; THR=${2:-thr_fat627yzkp}; SURF=${3:-surface:12}; TTY=${4:-/dev/ttys010}
+MIN=${1:-45}; THR=${2:?bb-thread-id}; SURF=${3:?cmux-surface}; TTY=${4:?terminal-tty}
 OUT=docs/experiments/0011-captures; mkdir -p "$OUT"
 C=/Applications/cmux.app/Contents/Resources/bin/cmux; export CMUX_QUIET=1
 END=$(( $(date +%s) + MIN*60 ))
@@ -29,7 +29,7 @@ last=evs[-1] if evs else {}
 print('last', datetime.datetime.fromtimestamp(last.get('createdAt',0)/1000,tz=datetime.timezone.utc).strftime('%H:%M:%S'), last.get('type'), json.dumps(last.get('data') or {})[:160])
 print('recent types', dict(c))" 2>&1
     echo "--- cursor stores (mtime)"; ls -lt ~/.cursor/chats/*/*/store.db-wal ~/.cursor/acp-sessions/*/store.db-wal 2>/dev/null | head -4 | awk '{print $6,$7,$8,$9}'
-    echo "--- hooks: $(wc -l < ~/.example-hooks/cursor-hooks.jsonl) lines, last: $(tail -1 ~/.example-hooks/cursor-hooks.jsonl | cut -c1-120)"
+    echo "--- hooks: $(wc -l < ~/.label-agent-stops/cursor-hooks.jsonl) lines, last: $(tail -1 ~/.label-agent-stops/cursor-hooks.jsonl | cut -c1-120)"
     echo "--- procs: $(ps -axo pid,etime,command | grep -c '[c]ursor-agent.*index.js')" cursor-agent processes
   } >> "$OUT/snapshots.log" 2>&1
   sleep 20

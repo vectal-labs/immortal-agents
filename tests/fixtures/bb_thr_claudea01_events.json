@@ -1,0 +1,78 @@
+[
+  {
+    "id": "evt_ca01",
+    "scope": {
+      "kind": "turn",
+      "turnId": "turn-a-t1"
+    },
+    "threadId": "thr_claudea01",
+    "seq": 18,
+    "createdAt": 1788184970359,
+    "type": "provider/error",
+    "data": {
+      "providerThreadId": "pt-claude-a-0001",
+      "message": "Provider error",
+      "detail": "Claude Code API retry 9/10 after 35566ms: unknown",
+      "willRetry": true,
+      "errorInfo": {
+        "category": "unknown",
+        "providerCode": "unknown",
+        "httpStatusCode": null
+      }
+    }
+  },
+  {
+    "id": "evt_ca02",
+    "scope": {
+      "kind": "turn",
+      "turnId": "turn-a-t1"
+    },
+    "threadId": "thr_claudea01",
+    "seq": 19,
+    "createdAt": 1788185005946,
+    "type": "provider/error",
+    "data": {
+      "providerThreadId": "pt-claude-a-0001",
+      "message": "Provider error",
+      "detail": "Claude Code API retry 10/10 after 37218ms: unknown",
+      "willRetry": true,
+      "errorInfo": {
+        "category": "unknown",
+        "providerCode": "unknown",
+        "httpStatusCode": null
+      }
+    }
+  },
+  {
+    "id": "evt_ca03",
+    "scope": {
+      "kind": "turn",
+      "turnId": "turn-a-t1"
+    },
+    "threadId": "thr_claudea01",
+    "seq": 23,
+    "createdAt": 1788185043065,
+    "type": "provider/error",
+    "data": {
+      "providerThreadId": "pt-claude-a-0001",
+      "message": "Provider error",
+      "detail": "API Error: Can't reach the API server — check your internet or DNS (ENOTFOUND)"
+    }
+  },
+  {
+    "id": "evt_ca04",
+    "scope": {
+      "kind": "turn",
+      "turnId": "turn-a-t1"
+    },
+    "threadId": "thr_claudea01",
+    "seq": 24,
+    "createdAt": 1788185043065,
+    "type": "turn/completed",
+    "data": {
+      "providerThreadId": "pt-claude-a-0001",
+      "status": "failed",
+      "providerCheckpointId": "ckpt-0001"
+    }
+  }
+]

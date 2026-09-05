@@ -1,0 +1,6 @@
+  → Now write a second, even longer piece about the same topic.
+
+  Auto · 14.3%
+  /tmp/oar-exp11-cmux
+
+  Reconnecting to agent.example.cursor.sh (attempt 7, 30s)

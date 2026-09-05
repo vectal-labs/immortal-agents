@@ -1,7 +1,7 @@
 # Experiment 0010 — bb revive after a real Wi-Fi cut; gated loop proven, DNS wait never fired
 
 Date: 2026-09-02. Third real cut for the bb host (ADR 0036), first with the
-0009 code (readiness gate + recheck). David flipped Wi-Fi off by hand for
+0009 code (readiness gate + recheck). The operator flipped Wi-Fi off by hand for
 8.5 min. Watcher ran unattended under launchd. Human flip, so ADR 0037 does
 not apply.
 
@@ -11,17 +11,17 @@ not apply.
   (claude-code) and `0010 Codex A` (codex) writing a long essay (transatlantic
   cables, mid-stream when the cut hit), plus a `control` thread (idle).
   Prompts were sent by a `main` acp-cursor thread in the same project.
-- Unplanned: David messaged `other-thread-title`
-  (claude-code, project `other-project`) 10s before the cut.
+- Unplanned: the operator messaged `Analyze project simplification opportunities`
+  (claude-code, project `youtube-alpha`) 10s before the cut.
 - Discord webhook configured. cmux, Terminal.app, Ghostty not running.
 
 ## Timeline (UTC)
 
 - 21:36:15 Claude A and Codex A get the essay prompt
-- 21:36:57 David messages the `other-project` thread
+- 21:36:57 the operator messages the `youtube-alpha` thread
 - 21:37:07 Wi-Fi off → watcher `to_offline`
 - 21:38:12 Claude A `Claude Code API retry 1/10`
-- 21:41:02 `other-project` thread: retry 10/10 failed, status `error` (ENOTFOUND)
+- 21:41:02 `youtube-alpha` thread: retry 10/10 failed, status `error` (ENOTFOUND)
 - 21:41:07 Claude A: retry 10/10 failed, status `error` (ENOTFOUND)
 - 21:42:04–21:44:45 Codex A: `Reconnecting… 2/5 … 5/5`, then `waiting for
   network` ×6, all `willRetry`; status stays `active`
@@ -31,7 +31,7 @@ not apply.
 - 21:45:38 Claude A `resume` (`status=error`, `network_error=True`,
   `error_in_outage=True`, `all_three_agree`) → `resume_sent ok`, 2s after recovery
 - 21:45:39 Discord `notify sent=true` ✅ (first post, no retry needed)
-- 21:45:40 `other-project` thread: same three signals → `resume_sent ok`,
+- 21:45:40 `youtube-alpha` thread: same three signals → `resume_sent ok`,
   `notify sent=true`
 - 21:45:40 `recheck_armed` (every 60s until 21:50:40)
 - 21:45:42 Claude A starts a new turn; 21:45:46 Codex A resumes streaming on its own
@@ -51,12 +51,12 @@ errors. Both Discord pings landed (0009's ping did not).
 
 ## The second revive
 
-`other-thread-title` is not a 0010 thread. It was
-real work in `other-project`, mid-turn when the cut hit. It died the same way
+`Analyze project simplification opportunities` is not a 0010 thread. It was
+real work in `youtube-alpha`, mid-turn when the cut hit. It died the same way
 (10/10 retries, ENOTFOUND at 21:41:02, inside the window), so all three
 signals agreed. Correct by the rules: the watcher covers every non-archived
 `claude-code`/`codex` thread in bb, in every project. It got "keep going"
-without David asking and resumed its task. Not a bug, but a real side effect
+without the operator asking and resumed its task. Not a bug, but a real side effect
 to know about.
 
 ## Not exercised
@@ -79,7 +79,7 @@ The 0009 guards ran but never had to do anything:
 - The `main` acp-cursor thread that drove the experiment lost its tool bridge
   in the cut (every command "service unavailable"). Its status stayed `idle`,
   and `acp-cursor` is outside the watcher's providers, so nothing acted on it.
-  It came back on its own when David messaged it at 21:46:50. Cursor threads
+  It came back on its own when the operator messaged it at 21:46:50. Cursor threads
   in bb are an uncovered host.
 - Codex CLI's own retry loop survived 8.5 min again; Claude Code's died after
   ~3 min. Same as 0003/0004/0009.

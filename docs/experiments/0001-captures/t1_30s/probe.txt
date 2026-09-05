@@ -1,3 +1,0 @@
-curl: (7) Failed to connect to captive.apple.com port 80 after 2 ms: Couldn't connect to server
-http_code=000
-curl_fail

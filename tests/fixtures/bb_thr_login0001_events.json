@@ -1,0 +1,34 @@
+[
+  {
+    "id": "evt_lo01",
+    "scope": {
+      "kind": "turn",
+      "turnId": "turn-a-t3"
+    },
+    "threadId": "thr_login0001",
+    "seq": 9,
+    "createdAt": 1788186221417,
+    "type": "provider/error",
+    "data": {
+      "providerThreadId": "pt-login-0001",
+      "message": "Provider error",
+      "detail": "Not logged in · Please run /login"
+    }
+  },
+  {
+    "id": "evt_lo02",
+    "scope": {
+      "kind": "turn",
+      "turnId": "turn-a-t3"
+    },
+    "threadId": "thr_login0001",
+    "seq": 10,
+    "createdAt": 1788186221417,
+    "type": "turn/completed",
+    "data": {
+      "providerThreadId": "pt-login-0001",
+      "status": "failed",
+      "providerCheckpointId": "ckpt-0002"
+    }
+  }
+]

@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
-from immortal.core import logbook
+import logbook
 import watcher
 
 
@@ -101,7 +101,7 @@ class SimCliTests(unittest.TestCase):
         env = os.environ.copy()
         env["WATCHER_STATE_DIR"] = str(state_dir)
         return subprocess.run(
-            [sys.executable, "-m", "immortal.sim", *args],
+            [sys.executable, str(ROOT / "sim.py"), *args],
             check=True,
             capture_output=True,
             text=True,

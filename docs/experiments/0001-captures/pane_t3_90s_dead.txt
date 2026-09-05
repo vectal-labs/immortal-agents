@@ -1,0 +1,15 @@
+╭─── Claude Code v2.1.237 ──────────────────────────────────────────────╮
+│ /tmp/scratch/wifi-kill-exp                                            │
+╰───────────────────────────────────────────────────────────────────────╯
+
+> Build a complete local Python package called maze_solver in this directory.
+
+⏺ Bash(ls)
+  ⎿  (empty directory)
+
+⏺ API Error: Connection lost mid-response. The response above may be incomplete.
+
+──────────────────────────────────────────────────────────────────────────
+❯
+──────────────────────────────────────────────────────────────────────────
+  ? for shortcuts                                    shift+tab to cycle

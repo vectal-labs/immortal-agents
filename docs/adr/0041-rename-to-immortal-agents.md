@@ -6,4 +6,4 @@ The reason we chose a new name is because I want to open source this project soo
 
 ## Scope (added 2026-09-03)
 
-Full rename: GitHub repo (`vectal-labs/immortal-agents`), local folder (`~/code/immortal-agents`), state dir (`~/.immortal-agents`, moved once by hand, no fallback in code), watcher launchd label (`com.davidondrej.immortal-agents`; netguard label unchanged, paths only), README, docs, and code strings. Old experiment captures stay as-is.
+Full rename: GitHub repo (`vectal-labs/immortal-agents`), local folder (`~/code/immortal-agents`), state dir (`~/.immortal-agents`, moved once by hand, no fallback in code), launchd labels (`com.immortal-agents.watcher`, `com.immortal-agents.netguard`), README, docs, and code strings. Old experiment captures stay as-is.

@@ -1,7 +1,6 @@
 2026-08-21T15:59:26Z PRE snapshot
-2026-08-21T15:59:26Z snapshot pre
 2026-08-21T15:59:26Z CUT start
-2026-08-21T15:59:27Z CUT done airport=Wi-Fi Power (en0): Off  axb=Disabled
+2026-08-21T15:59:27Z CUT done airport=Wi-Fi Power (en0): Off  usb=Disabled
 2026-08-21T15:59:27Z snapshot t0_immediate
 2026-08-21T15:59:58Z snapshot t1_30s
 2026-08-21T16:00:28Z snapshot t2_60s
@@ -9,6 +8,5 @@
 2026-08-21T16:01:28Z snapshot t4_120s
 2026-08-21T16:01:58Z snapshot t5_150s
 2026-08-21T16:01:58Z OUTAGE window complete; trap will restore
-2026-08-21T16:01:58Z snapshot post_before_restore
 2026-08-21T16:01:58Z RESTORE start
-2026-08-21T16:01:59Z RESTORE done airport=Wi-Fi Power (en0): On  axb=Enabled
+2026-08-21T16:01:59Z RESTORE done airport=Wi-Fi Power (en0): On  usb=Enabled

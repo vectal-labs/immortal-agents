@@ -16,5 +16,5 @@ accepts local clients from the same macOS user.
 ## Consequences
 
 - End-to-end testing and production resume delivery are unblocked.
-- Any local process running as David's user can control cmux panes. Accepted:
+- Any local process running as the operator's user can control cmux panes. Accepted:
   same trust boundary as the user's own shell.

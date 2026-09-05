@@ -6,7 +6,7 @@ bb (getbb.app) is a GUI that runs Claude Code and Codex as provider sessions,
 not terminals. It records an internet death structurally: a `provider/error`
 event with the network error text, a `turn/completed` with `status: failed`,
 and thread `status = error`. Finished or waiting threads are `idle`. A real
-death was already recorded on this Mac on 2026-08-31 (`thr_jg3yv6kthc`).
+death was already recorded on this Mac on 2026-08-31 (`thr_claudea01`).
 
 ## Decision
 

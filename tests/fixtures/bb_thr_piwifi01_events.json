@@ -1,0 +1,421 @@
+[
+ {
+  "id": "evt_pw01",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-d-t1"
+  },
+  "threadId": "thr_piwifi01",
+  "seq": 292,
+  "createdAt": 1788431148131,
+  "type": "turn/completed",
+  "data": {
+   "providerThreadId": "thr_piwifi01",
+   "status": "completed",
+   "providerCheckpointId": "ckpt-pw01"
+  }
+ },
+ {
+  "id": "evt_pw02",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-d-t2"
+  },
+  "threadId": "thr_piwifi01",
+  "seq": 334,
+  "createdAt": 1788431233332,
+  "type": "turn/completed",
+  "data": {
+   "providerThreadId": "thr_piwifi01",
+   "status": "completed",
+   "providerCheckpointId": "ckpt-pw02"
+  }
+ },
+ {
+  "id": "evt_pw03",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-d-t3"
+  },
+  "threadId": "thr_piwifi01",
+  "seq": 491,
+  "createdAt": 1788431393811,
+  "type": "turn/completed",
+  "data": {
+   "providerThreadId": "thr_piwifi01",
+   "status": "completed",
+   "providerCheckpointId": "ckpt-pw03"
+  }
+ },
+ {
+  "id": "evt_pw04",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t1"
+  },
+  "threadId": "thr_piwifi01",
+  "seq": 497,
+  "createdAt": 1788439034803,
+  "type": "provider/error",
+  "data": {
+   "providerThreadId": "thr_piwifi01",
+   "message": "Provider error",
+   "detail": "Connection error.",
+   "willRetry": true
+  }
+ },
+ {
+  "id": "evt_pw05",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t1"
+  },
+  "threadId": "thr_piwifi01",
+  "seq": 499,
+  "createdAt": 1788439036837,
+  "type": "provider/error",
+  "data": {
+   "providerThreadId": "thr_piwifi01",
+   "message": "Provider error",
+   "detail": "Connection error.",
+   "willRetry": true
+  }
+ },
+ {
+  "id": "evt_pw06",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t1"
+  },
+  "threadId": "thr_piwifi01",
+  "seq": 501,
+  "createdAt": 1788439040872,
+  "type": "provider/error",
+  "data": {
+   "providerThreadId": "thr_piwifi01",
+   "message": "Provider error",
+   "detail": "Connection error.",
+   "willRetry": true
+  }
+ },
+ {
+  "id": "evt_pw07",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t1"
+  },
+  "threadId": "thr_piwifi01",
+  "seq": 503,
+  "createdAt": 1788439048790,
+  "type": "provider/error",
+  "data": {
+   "providerThreadId": "thr_piwifi01",
+   "message": "Provider error",
+   "detail": "Connection error."
+  }
+ },
+ {
+  "id": "evt_pw08",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t1"
+  },
+  "threadId": "thr_piwifi01",
+  "seq": 504,
+  "createdAt": 1788439048790,
+  "type": "turn/completed",
+  "data": {
+   "providerThreadId": "thr_piwifi01",
+   "status": "failed"
+  }
+ },
+ {
+  "id": "evt_pw09",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t2"
+  },
+  "threadId": "thr_piwifi01",
+  "seq": 557,
+  "createdAt": 1788439116796,
+  "type": "turn/completed",
+  "data": {
+   "providerThreadId": "thr_piwifi01",
+   "status": "completed",
+   "providerCheckpointId": "ckpt-pw04"
+  }
+ },
+ {
+  "id": "evt_pw10",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t3"
+  },
+  "threadId": "thr_piwifi01",
+  "seq": 606,
+  "createdAt": 1788439438119,
+  "type": "turn/completed",
+  "data": {
+   "providerThreadId": "thr_piwifi01",
+   "status": "completed",
+   "providerCheckpointId": "ckpt-pw05"
+  }
+ },
+ {
+  "id": "evt_pw11",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t4"
+  },
+  "threadId": "thr_piwifi01",
+  "seq": 708,
+  "createdAt": 1788439855181,
+  "type": "turn/completed",
+  "data": {
+   "providerThreadId": "thr_piwifi01",
+   "status": "completed",
+   "providerCheckpointId": "ckpt-pw06"
+  }
+ },
+ {
+  "id": "evt_pw12",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t5"
+  },
+  "threadId": "thr_piwifi01",
+  "seq": 772,
+  "createdAt": 1788439874703,
+  "type": "turn/completed",
+  "data": {
+   "providerThreadId": "thr_piwifi01",
+   "status": "completed",
+   "providerCheckpointId": "ckpt-pw07"
+  }
+ },
+ {
+  "id": "evt_pw13",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t6"
+  },
+  "threadId": "thr_piwifi01",
+  "seq": 812,
+  "createdAt": 1788439893861,
+  "type": "turn/completed",
+  "data": {
+   "providerThreadId": "thr_piwifi01",
+   "status": "completed",
+   "providerCheckpointId": "ckpt-pw08"
+  }
+ },
+ {
+  "id": "evt_pw14",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t7"
+  },
+  "threadId": "thr_piwifi01",
+  "seq": 882,
+  "createdAt": 1788439960161,
+  "type": "turn/completed",
+  "data": {
+   "providerThreadId": "thr_piwifi01",
+   "status": "completed",
+   "providerCheckpointId": "ckpt-pw09"
+  }
+ },
+ {
+  "id": "evt_pw15",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t8"
+  },
+  "threadId": "thr_piwifi01",
+  "seq": 940,
+  "createdAt": 1788439978737,
+  "type": "turn/completed",
+  "data": {
+   "providerThreadId": "thr_piwifi01",
+   "status": "completed",
+   "providerCheckpointId": "ckpt-pw10"
+  }
+ },
+ {
+  "id": "evt_pw16",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t9"
+  },
+  "threadId": "thr_piwifi01",
+  "seq": 1126,
+  "createdAt": 1788440161163,
+  "type": "turn/completed",
+  "data": {
+   "providerThreadId": "thr_piwifi01",
+   "status": "completed",
+   "providerCheckpointId": "ckpt-pw11"
+  }
+ },
+ {
+  "id": "evt_pw17",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t10"
+  },
+  "threadId": "thr_piwifi01",
+  "seq": 1540,
+  "createdAt": 1788440740717,
+  "type": "turn/completed",
+  "data": {
+   "providerThreadId": "thr_piwifi01",
+   "status": "completed",
+   "providerCheckpointId": "ckpt-pw12"
+  }
+ },
+ {
+  "id": "evt_pw18",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t16"
+  },
+  "threadId": "thr_piwifi01",
+  "seq": 2031,
+  "createdAt": 1788441423557,
+  "type": "turn/completed",
+  "data": {
+   "providerThreadId": "thr_piwifi01",
+   "status": "completed",
+   "providerCheckpointId": "ckpt-pw13"
+  }
+ },
+ {
+  "id": "evt_pw19",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t17"
+  },
+  "threadId": "thr_piwifi01",
+  "seq": 2120,
+  "createdAt": 1788441699576,
+  "type": "turn/completed",
+  "data": {
+   "providerThreadId": "thr_piwifi01",
+   "status": "completed",
+   "providerCheckpointId": "ckpt-pw14"
+  }
+ },
+ {
+  "id": "evt_pw20",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t18"
+  },
+  "threadId": "thr_piwifi01",
+  "seq": 2150,
+  "createdAt": 1788441789927,
+  "type": "provider/error",
+  "data": {
+   "providerThreadId": "thr_piwifi01",
+   "message": "Provider error",
+   "detail": "Service temporarily unavailable. The model did not respond to this request."
+  }
+ },
+ {
+  "id": "evt_pw21",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t18"
+  },
+  "threadId": "thr_piwifi01",
+  "seq": 2151,
+  "createdAt": 1788441789927,
+  "type": "turn/completed",
+  "data": {
+   "providerThreadId": "thr_piwifi01",
+   "status": "failed"
+  }
+ },
+ {
+  "id": "evt_pw22",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t19"
+  },
+  "threadId": "thr_piwifi01",
+  "seq": 2156,
+  "createdAt": 1788443532569,
+  "type": "provider/error",
+  "data": {
+   "providerThreadId": "thr_piwifi01",
+   "message": "Provider error",
+   "detail": "Request timed out.",
+   "willRetry": true
+  }
+ },
+ {
+  "id": "evt_pw23",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t19"
+  },
+  "threadId": "thr_piwifi01",
+  "seq": 2158,
+  "createdAt": 1788443534605,
+  "type": "provider/error",
+  "data": {
+   "providerThreadId": "thr_piwifi01",
+   "message": "Provider error",
+   "detail": "Connection error.",
+   "willRetry": true
+  }
+ },
+ {
+  "id": "evt_pw24",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t19"
+  },
+  "threadId": "thr_piwifi01",
+  "seq": 2160,
+  "createdAt": 1788443538646,
+  "type": "provider/error",
+  "data": {
+   "providerThreadId": "thr_piwifi01",
+   "message": "Provider error",
+   "detail": "Connection error.",
+   "willRetry": true
+  }
+ },
+ {
+  "id": "evt_pw25",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t19"
+  },
+  "threadId": "thr_piwifi01",
+  "seq": 2162,
+  "createdAt": 1788443546585,
+  "type": "provider/error",
+  "data": {
+   "providerThreadId": "thr_piwifi01",
+   "message": "Provider error",
+   "detail": "Connection error."
+  }
+ },
+ {
+  "id": "evt_pw26",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t19"
+  },
+  "threadId": "thr_piwifi01",
+  "seq": 2163,
+  "createdAt": 1788443546585,
+  "type": "turn/completed",
+  "data": {
+   "providerThreadId": "thr_piwifi01",
+   "status": "failed"
+  }
+ }
+]

@@ -8,7 +8,7 @@ for 25 minutes) got the same treatment ad hoc. It should be the rule.
 
 ## Decision
 
-Anything that harms David's machine, his work, or his time — not just a
+Anything that harms the operator's machine, work, or time — not just a
 failed test — gets a numbered write-up in `docs/incidents/` before the fixes
 are considered done (David, 2026-09-02). Required sections:
 

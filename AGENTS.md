@@ -1,21 +1,7 @@
-# LAYOUT (ADR 0046)
-- `watcher.py` — trigger, frozen; launchd runs `$REPO_DIR/watcher.py`
-- `revive.py` — revive logic, changes often
-- `immortal/` — the package; everything below lives inside it
-  - `core/` — shared helpers (common, logbook, notify, osa, procs, ready, revive_state, telemetry)
-  - `detect/` — one detector per harness (claude, codex, pi, bb, bb_provider)
-  - `hosts/` — one adapter per host (bb, cmux, ghostty, terminal)
-  - `sim/` — simulated outage; run `python3 -m immortal.sim`
-- `ops/` — netguard launchd files, telemetry server
-- `docs/` — ADRs, incidents, launchd, experiments (live-run write-ups and captures), private notes (gitignored)
-
 # PROJECT RULES
 - this is a quick and dirty prototype; do not over-engineer or bloat it
 - other agents/humans work here; never undo changes you did not make
 - never create new ADRs without David's explicit approval
-- if the next action is obvious & safe, just do it
-- verify yourself, never ask: `python3 -m unittest discover -s tests`
-- live watcher: `./install.sh status`, `./install.sh logs`, `./install.sh check`
 
 # NETWORK SAFETY
 - cutting the internet is allowed ONLY under ADR 0037 with David's fresh approval

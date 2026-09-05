@@ -4,7 +4,7 @@ Date: 2026-09-02. First live proof of the two AppleScript hosts (`host_terminal.
 `host_ghostty.py`). ADR 0035 loop, no real internet cut: Claude Code in each app
 pointed at the fake-outage proxy (`sim/proxy.py` on 10198, drop mode);
 `sim.py on --minutes 5` flipped it dead and told the watcher it was offline.
-David's Mac stayed online. Watcher ran unattended under launchd.
+The operator's Mac stayed online. Watcher ran unattended under launchd.
 
 ## Setup
 
@@ -31,7 +31,7 @@ David's Mac stayed online. Watcher ran unattended under launchd.
 
 ## Decisions (all unattended)
 
-- **Terminal.app ttys004 (Claude, dead):** harness from `pane_text`; JSONL
+- **Terminal.app tab (Claude, dead):** harness from `pane_text`; JSONL
   api_error + timing + pane `network_error` → `resume`. ✅ three signals
 - **Ghostty (Claude, dead):** harness from `process` (claude pid under Ghostty
   with the same resolved cwd); pane `unreadable`; JSONL api_error + timing →

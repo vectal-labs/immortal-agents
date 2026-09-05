@@ -1,0 +1,3 @@
+{"t": "22:43:41", "type": "provider/error", "st": null, "d": "Claude Code API retry 10/10 after 39855ms: unknown", "retry": true}
+{"t": "22:44:22", "type": "provider/error", "st": null, "d": "API Error: Can't reach the API server \u2014 check your internet or DNS (ENOTFOUND)", "retry": null}
+{"t": "22:44:22", "type": "turn/completed", "st": "failed", "d": "", "retry": null}

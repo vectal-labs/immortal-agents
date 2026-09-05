@@ -1,0 +1,176 @@
+[
+ {
+  "id": "evt_pc01",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-d-t4"
+  },
+  "threadId": "thr_picap001",
+  "seq": 154,
+  "createdAt": 1788431353631,
+  "type": "turn/completed",
+  "data": {
+   "providerThreadId": "thr_picap001",
+   "status": "completed",
+   "providerCheckpointId": "ckpt-pc01"
+  }
+ },
+ {
+  "id": "evt_pc02",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-d-t5"
+  },
+  "threadId": "thr_picap001",
+  "seq": 254,
+  "createdAt": 1788431383535,
+  "type": "turn/completed",
+  "data": {
+   "providerThreadId": "thr_picap001",
+   "status": "completed",
+   "providerCheckpointId": "ckpt-pc02"
+  }
+ },
+ {
+  "id": "evt_pc03",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t11"
+  },
+  "threadId": "thr_picap001",
+  "seq": 281,
+  "createdAt": 1788440311592,
+  "type": "turn/completed",
+  "data": {
+   "providerThreadId": "thr_picap001",
+   "status": "completed",
+   "providerCheckpointId": "ckpt-pc03"
+  }
+ },
+ {
+  "id": "evt_pc04",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t12"
+  },
+  "threadId": "thr_picap001",
+  "seq": 309,
+  "createdAt": 1788440346533,
+  "type": "turn/completed",
+  "data": {
+   "providerThreadId": "thr_picap001",
+   "status": "completed",
+   "providerCheckpointId": "ckpt-pc04"
+  }
+ },
+ {
+  "id": "evt_pc05",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t13"
+  },
+  "threadId": "thr_picap001",
+  "seq": 381,
+  "createdAt": 1788440390922,
+  "type": "turn/completed",
+  "data": {
+   "providerThreadId": "thr_picap001",
+   "status": "completed",
+   "providerCheckpointId": "ckpt-pc05"
+  }
+ },
+ {
+  "id": "evt_pc06",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t14"
+  },
+  "threadId": "thr_picap001",
+  "seq": 426,
+  "createdAt": 1788440470018,
+  "type": "turn/completed",
+  "data": {
+   "providerThreadId": "thr_picap001",
+   "status": "completed",
+   "providerCheckpointId": "ckpt-pc06"
+  }
+ },
+ {
+  "id": "evt_pc07",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t15"
+  },
+  "threadId": "thr_picap001",
+  "seq": 574,
+  "createdAt": 1788440768601,
+  "type": "turn/completed",
+  "data": {
+   "providerThreadId": "thr_picap001",
+   "status": "completed",
+   "providerCheckpointId": "ckpt-pc07"
+  }
+ },
+ {
+  "id": "evt_pc08",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t20"
+  },
+  "threadId": "thr_picap001",
+  "seq": 580,
+  "createdAt": 1788444029981,
+  "type": "provider/error",
+  "data": {
+   "providerThreadId": "thr_picap001",
+   "message": "Provider error",
+   "detail": "The model is currently at capacity due to high demand. Please try again in a few minutes, or use a higher service tier for priority processing: https://docs.x.ai/developers/advanced-api-usage/priority-processing"
+  }
+ },
+ {
+  "id": "evt_pc09",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t20"
+  },
+  "threadId": "thr_picap001",
+  "seq": 581,
+  "createdAt": 1788444029981,
+  "type": "turn/completed",
+  "data": {
+   "providerThreadId": "thr_picap001",
+   "status": "failed"
+  }
+ },
+ {
+  "id": "evt_pc10",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t22"
+  },
+  "threadId": "thr_picap001",
+  "seq": 586,
+  "createdAt": 1788445232548,
+  "type": "provider/error",
+  "data": {
+   "providerThreadId": "thr_picap001",
+   "message": "Provider error",
+   "detail": "The model is currently at capacity due to high demand. Please try again in a few minutes, or use a higher service tier for priority processing: https://docs.x.ai/developers/advanced-api-usage/priority-processing"
+  }
+ },
+ {
+  "id": "evt_pc11",
+  "scope": {
+   "kind": "turn",
+   "turnId": "turn-c-t22"
+  },
+  "threadId": "thr_picap001",
+  "seq": 587,
+  "createdAt": 1788445232548,
+  "type": "turn/completed",
+  "data": {
+   "providerThreadId": "thr_picap001",
+   "status": "failed"
+  }
+ }
+]

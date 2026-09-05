@@ -1,198 +1,20 @@
-2026-08-23T11:27:37Z OUTAGE script start OUTAGE_SECS=180 wifi=en0 usb=en14
-2026-08-23T11:27:37Z This will cut ALL internet (Wi-Fi, USB ethernet, Tailscale). Ctrl-C restores.
-2026-08-23T11:27:37Z STATE airport=On
-2026-08-23T11:27:37Z RESTORE start
-2026-08-23T11:27:37Z RESTORE done airport=Wi-Fi Power (en0): On  probe=200
-2026-08-23T11:29:42Z OUTAGE script start OUTAGE_SECS=180 wifi=en0 usb=en14
-2026-08-23T11:29:42Z This will cut ALL internet (Wi-Fi, USB ethernet, Tailscale). Ctrl-C restores.
-2026-08-23T11:29:42Z STATE airport=On
-2026-08-23T11:29:42Z RESTORE start
-2026-08-23T11:29:42Z RESTORE done airport=Wi-Fi Power (en0): On  probe=200
-2026-08-23T11:33:23Z OUTAGE script start OUTAGE_SECS=180 wifi=en0 usb=en14
-2026-08-23T11:33:23Z This will cut ALL internet (Wi-Fi, USB ethernet, Tailscale). Ctrl-C restores.
-2026-08-23T11:33:23Z STATE airport=On
-2026-08-23T11:33:23Z tailscale bin=/Applications/Tailscale.app/Contents/MacOS/tailscale state=Running
-2026-08-23T11:33:23Z CUT start
-2026-08-23T11:33:23Z CUT tailscale down
-2026-08-23T11:33:24Z CUT service 'AX88179B' (was Enabled)
-2026-08-23T11:33:24Z CUT service 'AX88179A' (was Enabled)
-2026-08-23T11:33:24Z CUT service 'USB 10/100/1000 LAN' (was Enabled)
-2026-08-23T11:33:25Z CUT service 'AX88179B' (was Disabled)
-2026-08-23T11:33:25Z CUT service 'Wi-Fi' (was Enabled)
-2026-08-23T11:33:25Z CUT service 'Tailscale' (was Enabled)
-2026-08-23T11:33:25Z CUT done airport=Wi-Fi Power (en0): Off 
-2026-08-23T11:33:28Z probe after cut http_code=000
-2026-08-23T11:33:43Z probe t=15s http_code=000
-2026-08-23T11:33:58Z probe t=30s http_code=000
-2026-08-23T11:34:13Z probe t=45s http_code=000
-2026-08-23T11:34:28Z probe t=60s http_code=000
-2026-08-23T11:34:43Z probe t=75s http_code=000
-2026-08-23T11:34:58Z probe t=90s http_code=000
-2026-08-23T11:35:13Z probe t=105s http_code=000
-2026-08-23T11:35:28Z probe t=120s http_code=000
-2026-08-23T11:35:43Z probe t=135s http_code=000
-2026-08-23T11:35:58Z probe t=150s http_code=000
-2026-08-23T11:36:13Z probe t=165s http_code=000
-2026-08-23T11:36:28Z probe t=180s http_code=000
-2026-08-23T11:36:28Z OUTAGE window complete (180s, probe stayed dead); trap will restore
-2026-08-23T11:36:28Z RESTORE start
-2026-08-23T11:36:28Z RESTORE service 'AX88179B' to Enabled
-2026-08-23T11:36:29Z RESTORE service 'AX88179A' to Enabled
-2026-08-23T11:36:29Z RESTORE service 'USB 10/100/1000 LAN' to Enabled
-2026-08-23T11:36:29Z RESTORE service 'Wi-Fi' to Enabled
-2026-08-23T11:36:29Z RESTORE service 'Tailscale' to Enabled
-2026-08-23T11:36:29Z RESTORE tailscale up
-2026-08-23T11:36:33Z RESTORE done airport=Wi-Fi Power (en0): On  probe=200
-2026-08-23T15:15:44Z OUTAGE script start OUTAGE_SECS=180 wifi=en0 usb=en14
-2026-08-23T15:15:44Z This will cut ALL internet (Wi-Fi, USB ethernet, Tailscale). Ctrl-C restores.
-2026-08-23T15:15:44Z STATE airport=On
-2026-08-23T15:15:45Z tailscale bin=/Applications/Tailscale.app/Contents/MacOS/tailscale state=Running
-2026-08-23T15:15:45Z CUT start
-2026-08-23T15:15:45Z CUT tailscale down
-2026-08-23T15:15:46Z CUT service 'AX88179B' (was Enabled)
-2026-08-23T15:15:46Z CUT service 'AX88179A' (was Enabled)
-2026-08-23T15:15:46Z CUT service 'USB 10/100/1000 LAN' (was Enabled)
-2026-08-23T15:15:46Z CUT service 'AX88179B' (was Disabled)
-2026-08-23T15:15:46Z CUT service 'Wi-Fi' (was Enabled)
-2026-08-23T15:15:46Z CUT service 'Tailscale' (was Enabled)
-2026-08-23T15:15:46Z CUT done airport=Wi-Fi Power (en0): Off 
-2026-08-23T15:15:50Z probe after cut http_code=000
-2026-08-23T15:16:05Z probe t=15s http_code=000
-2026-08-23T15:16:23Z probe t=30s http_code=000
-2026-08-23T15:16:41Z probe t=45s http_code=000
-2026-08-23T15:16:56Z probe t=60s http_code=000
-2026-08-23T15:17:11Z probe t=75s http_code=000
-2026-08-23T15:17:26Z probe t=90s http_code=000
-2026-08-23T15:17:41Z probe t=105s http_code=000
-2026-08-23T15:17:56Z probe t=120s http_code=000
-2026-08-23T15:18:11Z probe t=135s http_code=000
-2026-08-23T15:18:26Z probe t=150s http_code=000
-2026-08-23T15:18:41Z probe t=165s http_code=000
-2026-08-23T15:18:56Z probe t=180s http_code=000
-2026-08-23T15:18:56Z OUTAGE window complete (180s, probe stayed dead); trap will restore
-2026-08-23T15:18:56Z RESTORE start
-2026-08-23T15:18:56Z RESTORE service 'AX88179B' to Enabled
-2026-08-23T15:18:56Z RESTORE service 'AX88179A' to Enabled
-2026-08-23T15:18:57Z RESTORE service 'USB 10/100/1000 LAN' to Enabled
-2026-08-23T15:18:57Z RESTORE service 'Wi-Fi' to Enabled
-2026-08-23T15:18:57Z RESTORE service 'Tailscale' to Enabled
-2026-08-23T15:18:57Z RESTORE tailscale up
-2026-08-23T15:19:03Z RESTORE done airport=Wi-Fi Power (en0): On  probe=200
-2026-08-23T16:17:44Z OUTAGE script start OUTAGE_SECS=180 wifi=en0 usb=en14
+2026-08-23T16:17:44Z OUTAGE script start OUTAGE_SECS=180 wifi=en0 usb=<usb-ethernet>
 2026-08-23T16:17:44Z This will cut ALL internet (Wi-Fi, USB ethernet, Tailscale). Ctrl-C restores.
 2026-08-23T16:17:44Z STATE airport=On
-2026-08-23T16:17:44Z tailscale bin=/Applications/Tailscale.app/Contents/MacOS/tailscale state=Running
 2026-08-23T16:17:44Z CUT start
 2026-08-23T16:17:44Z CUT tailscale down
-2026-08-23T16:17:45Z CUT service 'AX88179B' (was Enabled)
-2026-08-23T16:17:45Z CUT service 'AX88179A' (was Enabled)
-2026-08-23T16:17:45Z CUT service 'USB 10/100/1000 LAN' (was Enabled)
-2026-08-23T16:17:45Z CUT service 'AX88179B' (was Disabled)
+2026-08-23T16:17:45Z CUT service 'USB Ethernet' (was Enabled)
 2026-08-23T16:17:45Z CUT service 'Wi-Fi' (was Enabled)
 2026-08-23T16:17:45Z CUT service 'Tailscale' (was Enabled)
-2026-08-23T16:17:45Z CUT done airport=Wi-Fi Power (en0): Off 
+2026-08-23T16:17:45Z CUT done airport=Wi-Fi Power (en0): Off
 2026-08-23T16:17:49Z probe after cut http_code=000
 2026-08-23T16:18:04Z probe t=15s http_code=000
-2026-08-23T16:18:19Z probe t=30s http_code=000
-2026-08-23T16:18:34Z probe t=45s http_code=000
-2026-08-23T16:18:49Z probe t=60s http_code=000
-2026-08-23T16:19:04Z probe t=75s http_code=000
-2026-08-23T16:19:19Z probe t=90s http_code=000
-2026-08-23T16:19:34Z probe t=105s http_code=000
 2026-08-23T16:19:49Z probe t=120s http_code=000
-2026-08-23T16:20:04Z probe t=135s http_code=000
-2026-08-23T16:20:19Z probe t=150s http_code=000
-2026-08-23T16:20:34Z probe t=165s http_code=000
 2026-08-23T16:20:49Z probe t=180s http_code=000
 2026-08-23T16:20:49Z OUTAGE window complete (180s, probe stayed dead); trap will restore
 2026-08-23T16:20:49Z RESTORE start
-2026-08-23T16:20:49Z RESTORE service 'AX88179B' to Enabled
-2026-08-23T16:20:49Z RESTORE service 'AX88179A' to Enabled
-2026-08-23T16:20:50Z RESTORE service 'USB 10/100/1000 LAN' to Enabled
+2026-08-23T16:20:49Z RESTORE service 'USB Ethernet' to Enabled
 2026-08-23T16:20:50Z RESTORE service 'Wi-Fi' to Enabled
 2026-08-23T16:20:50Z RESTORE service 'Tailscale' to Enabled
 2026-08-23T16:20:51Z RESTORE tailscale up
 2026-08-23T16:20:58Z RESTORE done airport=Wi-Fi Power (en0): On  probe=000
-2026-08-26T20:15:08Z OUTAGE script start OUTAGE_SECS=900 wifi=en0 usb=en14
-2026-08-26T20:15:08Z This will cut ALL internet (Wi-Fi, USB ethernet, Tailscale). Ctrl-C restores.
-2026-08-26T20:15:09Z STATE airport=On
-2026-08-26T20:15:09Z WARN no network service found for en14
-2026-08-26T20:15:09Z tailscale bin=/Applications/Tailscale.app/Contents/MacOS/tailscale state=Running
-2026-08-26T20:15:09Z CUT start
-2026-08-26T20:15:09Z CUT tailscale down
-2026-08-26T20:15:10Z CUT service 'AX88179B' (was Enabled)
-2026-08-26T20:15:10Z CUT service 'AX88179A' (was Enabled)
-2026-08-26T20:15:10Z CUT service 'USB 10/100/1000 LAN' (was Enabled)
-2026-08-26T20:15:10Z CUT service 'Wi-Fi' (was Enabled)
-2026-08-26T20:15:10Z CUT service 'Tailscale' (was Enabled)
-2026-08-26T20:15:10Z CUT done airport=Wi-Fi Power (en0): Off 
-2026-08-26T20:15:13Z probe after cut http_code=000
-2026-08-26T20:15:28Z probe t=15s http_code=000
-2026-08-26T20:15:43Z probe t=30s http_code=000
-2026-08-26T20:15:58Z probe t=45s http_code=000
-2026-08-26T20:16:13Z probe t=60s http_code=000
-2026-08-26T20:16:28Z probe t=75s http_code=000
-2026-08-26T20:16:44Z probe t=90s http_code=000
-2026-08-26T20:16:59Z probe t=105s http_code=000
-2026-08-26T20:17:14Z probe t=120s http_code=000
-2026-08-26T20:17:29Z probe t=135s http_code=000
-2026-08-26T20:17:44Z probe t=150s http_code=000
-2026-08-26T20:17:59Z probe t=165s http_code=000
-2026-08-26T20:18:14Z probe t=180s http_code=000
-2026-08-26T20:18:29Z probe t=195s http_code=000
-2026-08-26T20:18:44Z probe t=210s http_code=000
-2026-08-26T20:18:59Z probe t=225s http_code=000
-2026-08-26T20:19:14Z probe t=240s http_code=000
-2026-08-26T20:19:29Z probe t=255s http_code=000
-2026-08-26T20:19:44Z probe t=270s http_code=000
-2026-08-26T20:19:59Z probe t=285s http_code=000
-2026-08-26T20:20:14Z probe t=300s http_code=000
-2026-08-26T20:20:29Z probe t=315s http_code=000
-2026-08-26T20:20:44Z probe t=330s http_code=000
-2026-08-26T20:20:59Z probe t=345s http_code=000
-2026-08-26T20:21:14Z probe t=360s http_code=000
-2026-08-26T20:21:29Z probe t=375s http_code=000
-2026-08-26T20:21:44Z probe t=390s http_code=000
-2026-08-26T20:21:59Z probe t=405s http_code=000
-2026-08-26T20:22:14Z probe t=420s http_code=000
-2026-08-26T20:22:30Z probe t=435s http_code=000
-2026-08-26T20:22:45Z probe t=450s http_code=000
-2026-08-26T20:23:00Z probe t=465s http_code=000
-2026-08-26T20:23:15Z probe t=480s http_code=000
-2026-08-26T20:23:30Z probe t=495s http_code=000
-2026-08-26T20:23:45Z probe t=510s http_code=000
-2026-08-26T20:24:00Z probe t=525s http_code=000
-2026-08-26T20:24:15Z probe t=540s http_code=000
-2026-08-26T20:24:30Z probe t=555s http_code=000
-2026-08-26T20:24:45Z probe t=570s http_code=000
-2026-08-26T20:25:00Z probe t=585s http_code=000
-2026-08-26T20:25:15Z probe t=600s http_code=000
-2026-08-26T20:25:30Z probe t=615s http_code=000
-2026-08-26T20:25:45Z probe t=630s http_code=000
-2026-08-26T20:26:00Z probe t=645s http_code=000
-2026-08-26T20:26:15Z probe t=660s http_code=000
-2026-08-26T20:26:30Z probe t=675s http_code=000
-2026-08-26T20:26:45Z probe t=690s http_code=000
-2026-08-26T20:27:00Z probe t=705s http_code=000
-2026-08-26T20:27:15Z probe t=720s http_code=000
-2026-08-26T20:27:30Z probe t=735s http_code=000
-2026-08-26T20:27:45Z probe t=750s http_code=000
-2026-08-26T20:28:00Z probe t=765s http_code=000
-2026-08-26T20:28:15Z probe t=780s http_code=000
-2026-08-26T20:28:31Z probe t=795s http_code=000
-2026-08-26T20:28:46Z probe t=810s http_code=000
-2026-08-26T20:29:01Z probe t=825s http_code=000
-2026-08-26T20:29:16Z probe t=840s http_code=000
-2026-08-26T20:29:31Z probe t=855s http_code=000
-2026-08-26T20:29:46Z probe t=870s http_code=000
-2026-08-26T20:30:01Z probe t=885s http_code=000
-2026-08-26T20:30:16Z probe t=900s http_code=000
-2026-08-26T20:30:16Z OUTAGE window complete (900s, probe stayed dead); trap will restore
-2026-08-26T20:30:16Z RESTORE start
-2026-08-26T20:30:16Z RESTORE service 'AX88179B' to Enabled
-2026-08-26T20:30:16Z RESTORE service 'AX88179A' to Enabled
-2026-08-26T20:30:16Z RESTORE service 'USB 10/100/1000 LAN' to Enabled
-2026-08-26T20:30:16Z RESTORE service 'Wi-Fi' to Enabled
-2026-08-26T20:30:16Z RESTORE service 'Tailscale' to Enabled
-2026-08-26T20:30:17Z RESTORE tailscale up
-2026-08-26T20:30:25Z RESTORE done airport=Wi-Fi Power (en0): On  probe=200

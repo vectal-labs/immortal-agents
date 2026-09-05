@@ -1,31 +1,31 @@
 # Incident 0001 — Agent-launched outage script looped and left the Mac offline
 
 Date: 2026-09-01, 23:35–00:00 local (21:35–22:00 UTC). Severity: high.
-David's MacBook lost all internet for ~25 minutes, Wi-Fi was greyed out and
+The operator's MacBook lost all internet for ~25 minutes, Wi-Fi was greyed out and
 unclickable, a reboot did not fix it, and he had to debug from his phone.
 
 ## Summary
 
 An agent (this thread) ran the experiment outage script through
 `launchctl submit`. That launcher restarts jobs when they exit, so the script
-cut the internet a second time 20 seconds after restoring it. When David
+cut the internet a second time 20 seconds after restoring it. When the operator
 rebooted mid-cut, the script was killed before it could re-enable the network
 services it had disabled. Those disables are persistent macOS settings, so
-they survived the reboot. Wi-Fi stayed greyed out until David re-enabled the
+they survived the reboot. Wi-Fi stayed greyed out until the operator re-enabled the
 service by hand.
 
 ## Timeline (UTC, from `docs/experiments/outage-runs/0006-launchd.log` and the watcher log)
 
-- 21:34:51 Agent arms the cut: `launchctl submit -l com.davidondrej.outage0006 -- bash -c 'sleep 20; OUTAGE_SECS=480 0001-run-outage.sh'`
-- 21:35:11 Run 1 starts. Tailscale down, airport off, services disabled: `AX88179A/B`, `USB 10/100/1000 LAN`, `iPhone USB`, `Wi-Fi`, `Tailscale`.
+- 21:34:51 Agent arms the cut: `launchctl submit -l com.immortal-agents.outage0006 -- bash -c 'sleep 20; OUTAGE_SECS=480 0001-run-outage.sh'`
+- 21:35:11 Run 1 starts. Tailscale down, airport off, services disabled: every USB ethernet adapter, the phone-tethering service, `Wi-Fi`, `Tailscale`.
 - 21:43:20 Run 1 window complete. Restore succeeds: all services Enabled, airport On, probe 200. **The test itself worked.**
 - 21:43:32 Script exits 0.
 - 21:43:52 **launchd restarts the job.** Run 2 cuts everything again.
 - 21:47:38 The bb wake-up automation fires and queues a message into this (dead) thread.
-- 21:51:46 SIGTERM (David logging out / rebooting). Trap runs restore. Every `networksetup -setnetworkserviceenabled ... on` fails: `AuthorizationCreate() failed: -60008`, `Command requires admin privileges`. Tailscale CLI: `Failed to load preferences`. Restore ends with `probe=000`.
+- 21:51:46 SIGTERM (the operator logging out / rebooting). Trap runs restore. Every `networksetup -setnetworkserviceenabled ... on` fails: `AuthorizationCreate() failed: -60008`, `Command requires admin privileges`. Tailscale CLI: `Failed to load preferences`. Restore ends with `probe=000`.
 - ~21:52–22:00 Reboot. The submitted launchd job is gone (not persisted), but the six network services are still Disabled. Wi-Fi greyed out.
-- 22:00:33 David re-enables Wi-Fi manually. Watcher sees online.
-- 22:02 David messages the agent. Agent finds `AX88179A/B`, `USB 10/100/1000 LAN`, `iPhone USB`, `Tailscale` still Disabled and Tailscale backend Stopped; re-enables all, `tailscale up`. Probe 200.
+- 22:00:33 The operator re-enables Wi-Fi manually. Watcher sees online.
+- 22:02 The operator messages the agent. Agent finds the USB ethernet, phone-tethering and `Tailscale` services still Disabled and Tailscale backend Stopped; re-enables all, `tailscale up`. Probe 200.
 
 ## Root causes
 
@@ -54,7 +54,7 @@ the toggle stays clickable and the user can always flip it back.
 ### 3. Restore ran without authorization
 
 `networksetup` needs admin rights. Run 1's restore succeeded because the
-agent's process inherited David's logged-in GUI session authorization. Run 2's
+agent's process inherited the operator's logged-in GUI session authorization. Run 2's
 restore ran during logout/reboot, when the Authorization server was already
 refusing requests (`-60008`), so every re-enable failed. The script logged the
 failures and exited; nothing retried later.
@@ -62,7 +62,7 @@ failures and exited; nothing retried later.
 ### 4. Process failure: ADR 0020 was overridden
 
 ADR 0020 ("David launches test outages himself") exists because an unattended
-cut can strand the machine. David gave explicit permission for the agent to run
+cut can strand the machine. The operator gave explicit permission for the agent to run
 it this time; the agent should still have refused to launch it from a
 mechanism it had not verified, and should have kept the disable/restore pair
 inside one process that cannot be killed by the test itself.
@@ -77,7 +77,7 @@ inside one process that cannot be killed by the test itself.
 
 Done in this incident:
 
-- Re-enabled all six network services and Tailscale (manual, by the agent, after David restored Wi-Fi).
+- Re-enabled all six network services and Tailscale (manual, by the agent, after the operator restored Wi-Fi).
 - Confirmed no `outage0006` job remains loaded; deleted the wake-up automation.
 - Fixed the unrelated revive bug found by the test (`bb thread tell … --mode auto`).
 
@@ -85,7 +85,7 @@ Done 2026-09-02 (commit after this incident):
 
 1. **Outage script no longer disables services.** `0001-run-outage.sh` now cuts only Wi-Fi radio power and Tailscale — both reversible toggles. Wired adapters must be unplugged; the leak check aborts otherwise.
 2. **Script refuses to run detached.** It aborts unless stdin/stdout are a terminal and the parent is not launchd. `launchctl submit`, nohup, or an agent cannot run it. ADR 0020 is now enforced in code.
-3. **netguard watchdog installed.** `ops/launchd/netguard.sh` (LaunchAgent, every 120s) re-enables any disabled network service, and turns Wi-Fi radio on when the script's `cut-armed.json` deadline has passed. It never turns anything off. See `docs/launchd.md`.
+3. **netguard watchdog installed.** `launchd/netguard.sh` (LaunchAgent, every 120s) re-enables any disabled network service, and turns Wi-Fi radio on when the script's `cut-armed.json` deadline has passed. It never turns anything off. See `docs/launchd.md`.
 4. **AGENTS.md rule added**: no cuts by agents, no `launchctl submit`, no `-setnetworkserviceenabled off`.
 
 ## Lessons

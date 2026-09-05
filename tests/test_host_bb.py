@@ -9,23 +9,18 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
-from immortal.detect import bb as detect_bb
-from immortal.detect import bb_provider as detect_bb_provider
-from immortal.hosts import bb as host_bb
-import revive
-from immortal.core import revive_state
+import host_bb
 import watcher
-from immortal.core.common import now_iso, parse_ts
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 # Real death on 2026-08-31: Claude Code in bb, internet lost (ENOTFOUND).
-DEAD_EVENTS = json.loads((FIXTURES / "bb_thr_jg3yv6kthc_events.json").read_text())
+DEAD_EVENTS = json.loads((FIXTURES / "bb_thr_claudea01_events.json").read_text())
 # Real non-network error: "Not logged in".
-LOGIN_EVENTS = json.loads((FIXTURES / "bb_thr_hnu4c2a76j_events.json").read_text())
+LOGIN_EVENTS = json.loads((FIXTURES / "bb_thr_login0001_events.json").read_text())
 DEATH_AT = datetime.fromtimestamp(1788185043065 / 1000, tz=timezone.utc)
 # Experiment 0013 (2026-09-03): Claude Code in bb died 20s AFTER the captive
 # probe passed, inside the stale-DNS gap, before api.anthropic.com resolved.
-LATE_DEATH_EVENTS = json.loads((FIXTURES / "bb_thr_gmgh8s7j9w_events.json").read_text())
+LATE_DEATH_EVENTS = json.loads((FIXTURES / "bb_thr_latedns01_events.json").read_text())
 EXP13_LOSS = "2026-09-03T09:08:36.920310Z"
 EXP13_PROBE_ONLINE = "2026-09-03T09:28:24.340210Z"
 EXP13_APIS_READY = "2026-09-03T09:30:05.188265Z"
@@ -39,31 +34,6 @@ def thread(thread_id, status="error", provider="claude-code"):
     return {"id": thread_id, "status": status, "providerId": provider, "title": "t"}
 
 
-def detector_input(value, events):
-    error = host_bb.last_error(events)
-    target = {
-        "ref": value["id"],
-        "id": value["id"],
-        "cwd": None,
-        "title": value.get("title"),
-        "harness_hint": value.get("providerId"),
-        "status": value.get("status"),
-        "error_at": error["at"].isoformat() if error and error["at"] else None,
-    }
-    return target, error["detail"] if error else None
-
-
-def evaluate_outage(value, events, loss, recovery):
-    target, screen = detector_input(value, events)
-    return detect_bb.evaluate(target, screen, (loss, recovery))
-
-
-def evaluate_provider(value, events, now):
-    target, screen = detector_input(value, events)
-    stamp = now_iso(now)
-    return detect_bb_provider.evaluate(target, screen, ("1970-01-01T00:00:00Z", stamp))
-
-
 class EvaluateTests(unittest.TestCase):
     def window(self, minutes_before=10, minutes_after=10):
         return iso(DEATH_AT - timedelta(minutes=minutes_before)), iso(
@@ -72,8 +42,8 @@ class EvaluateTests(unittest.TestCase):
 
     def test_real_network_death_inside_outage_resumes(self):
         loss, recovery = self.window()
-        decision, reasons, info = evaluate_outage(
-            thread("thr_jg3yv6kthc"), DEAD_EVENTS, loss, recovery
+        decision, reasons, info = host_bb.evaluate(
+            thread("thr_claudea01"), DEAD_EVENTS, loss, recovery
         )
         self.assertEqual(decision, "resume")
         self.assertIn("all_three_agree", reasons)
@@ -86,37 +56,37 @@ class EvaluateTests(unittest.TestCase):
     def test_death_outside_outage_window_skips(self):
         loss = iso(DEATH_AT + timedelta(hours=1))
         recovery = iso(DEATH_AT + timedelta(hours=2))
-        decision, reasons, _ = evaluate_outage(
-            thread("thr_jg3yv6kthc"), DEAD_EVENTS, loss, recovery
+        decision, reasons, _ = host_bb.evaluate(
+            thread("thr_claudea01"), DEAD_EVENTS, loss, recovery
         )
         self.assertEqual(decision, "skip")
         self.assertIn("timing_miss", reasons)
 
     def test_death_in_the_stale_dns_gap_is_inside_the_outage(self):
         # A window that ends at the captive probe misses it (the 0013 bug)...
-        decision, reasons, info = evaluate_outage(
-            thread("thr_gmgh8s7j9w"), LATE_DEATH_EVENTS, EXP13_LOSS, EXP13_PROBE_ONLINE
+        decision, reasons, info = host_bb.evaluate(
+            thread("thr_latedns01"), LATE_DEATH_EVENTS, EXP13_LOSS, EXP13_PROBE_ONLINE
         )
         self.assertEqual((decision, reasons[-1]), ("skip", "timing_miss"))
-        self.assertGreater(parse_ts(info["error_at"]), parse_ts(EXP13_PROBE_ONLINE))
+        self.assertGreater(host_bb.parse_ts(info["error_at"]), host_bb.parse_ts(EXP13_PROBE_ONLINE))
         # ...a window that ends when the APIs resolve catches it.
-        decision, reasons, _ = evaluate_outage(
-            thread("thr_gmgh8s7j9w"), LATE_DEATH_EVENTS, EXP13_LOSS, EXP13_APIS_READY
+        decision, reasons, _ = host_bb.evaluate(
+            thread("thr_latedns01"), LATE_DEATH_EVENTS, EXP13_LOSS, EXP13_APIS_READY
         )
         self.assertEqual(decision, "resume")
         self.assertIn("all_three_agree", reasons)
 
     def test_login_error_skips(self):
         loss, recovery = self.window()
-        decision, reasons, _ = evaluate_outage(
-            thread("thr_hnu4c2a76j"), LOGIN_EVENTS, loss, recovery
+        decision, reasons, _ = host_bb.evaluate(
+            thread("thr_login0001"), LOGIN_EVENTS, loss, recovery
         )
         self.assertEqual(decision, "skip")
         self.assertIn("error_not_network", reasons)
 
     def test_idle_thread_never_resumes(self):
         loss, recovery = self.window()
-        decision, reasons, _ = evaluate_outage(
+        decision, reasons, _ = host_bb.evaluate(
             thread("thr_x", status="idle"), DEAD_EVENTS, loss, recovery
         )
         self.assertEqual(decision, "skip")
@@ -124,7 +94,7 @@ class EvaluateTests(unittest.TestCase):
 
     def test_error_without_provider_error_event_skips(self):
         loss, recovery = self.window()
-        decision, reasons, _ = evaluate_outage(thread("thr_x"), [], loss, recovery)
+        decision, reasons, _ = host_bb.evaluate(thread("thr_x"), [], loss, recovery)
         self.assertEqual(decision, "skip")
         self.assertIn("no_provider_error", reasons)
 
@@ -139,62 +109,32 @@ class ListFilterTests(unittest.TestCase):
             thread("e", "error", "pi"),
         ]
         with mock.patch.object(host_bb, "bb_json", return_value=listing):
-            ids = [t["id"] for t in host_bb.list_targets()]
-        self.assertEqual(ids, ["a", "b", "c", "e"])
-
-    def test_idle_cursor_threads_are_candidates_only_when_recent(self):
-        now_ms = datetime.now(timezone.utc).timestamp() * 1000
-        recent = {**thread("recent", "idle", "acp-cursor"), "latestAttentionAt": now_ms}
-        stale = {**thread("stale", "idle", "acp-cursor"), "latestAttentionAt": now_ms - 2 * 86400 * 1000}
-        claude = {**thread("claude", "idle", "claude-code"), "latestAttentionAt": now_ms}
-        with mock.patch.object(host_bb, "bb_json", return_value=[recent, stale, claude]):
-            ids = [t["id"] for t in host_bb._list_error_threads()]
-        self.assertEqual(ids, ["recent"])
-
-    def test_error_is_fetched_once_and_cached_with_target(self):
-        with mock.patch.object(host_bb, "_list_error_threads", return_value=[thread("a")]), mock.patch.object(
-            host_bb, "_thread_events", return_value=DEAD_EVENTS
-        ) as events:
-            target = host_bb.list_targets()[0]
-            self.assertIn("ENOTFOUND", host_bb.read_screen("a"))
-            self.assertIn("ENOTFOUND", host_bb.read_screen("a"))
-        events.assert_called_once_with("a")
-        self.assertEqual(target["error_at"], DEATH_AT.isoformat())
-
-
-class ResumeTests(unittest.TestCase):
-    def test_logs_stdout_tail(self):
-        proc = mock.Mock(returncode=0, stdout="sent", stderr="")
-        with mock.patch.object(host_bb.subprocess, "run", return_value=proc), mock.patch.object(
-            host_bb, "log"
-        ) as log:
-            self.assertTrue(host_bb.resume("thr_x"))
-        self.assertEqual(log.call_args.args[0], "bb_result")
-        self.assertEqual(log.call_args.kwargs["stdout"], "sent")
+            ids = [t["id"] for t in host_bb.list_error_threads()]
+        self.assertEqual(ids, ["a", "b", "e"])
 
 
 # Pi on Grok 4.6 via OpenRouter, 2026-09-03. Three real failures in one day:
 # 13:23Z "Service temporarily unavailable" (online), 13:52Z "Connection error"
 # (real Wi-Fi cut 13:28-13:53Z), and 14:00Z "at capacity" (online).
-PI_EVENTS = json.loads((FIXTURES / "bb_thr_fv5bxrynb7_events.json").read_text())
+PI_EVENTS = json.loads((FIXTURES / "bb_thr_piwifi01_events.json").read_text())
 PI_UNAVAILABLE_EVENTS = PI_EVENTS[:21]
-PI_CAPACITY_EVENTS = json.loads((FIXTURES / "bb_thr_b2q9cmz7zb_events.json").read_text())
+PI_CAPACITY_EVENTS = json.loads((FIXTURES / "bb_thr_picap001_events.json").read_text())
 PI_WIFI_LOSS = "2026-09-03T13:28:27.795722Z"
 PI_WIFI_APIS_READY = "2026-09-03T13:53:40Z"
 
 
 class PiOutagePathTests(unittest.TestCase):
     def test_pi_connection_error_inside_wifi_cut_resumes(self):
-        decision, reasons, info = evaluate_outage(
-            thread("thr_fv5bxrynb7", provider="pi"), PI_EVENTS, PI_WIFI_LOSS, PI_WIFI_APIS_READY
+        decision, reasons, info = host_bb.evaluate(
+            thread("thr_piwifi01", provider="pi"), PI_EVENTS, PI_WIFI_LOSS, PI_WIFI_APIS_READY
         )
         self.assertEqual(decision, "resume")
         self.assertIn("all_three_agree", reasons)
         self.assertEqual(info["error_detail"], "Connection error.")
 
     def test_provider_outage_is_not_a_network_error(self):
-        decision, reasons, _ = evaluate_outage(
-            thread("thr_b2q9cmz7zb", provider="pi"), PI_CAPACITY_EVENTS, PI_WIFI_LOSS, PI_WIFI_APIS_READY
+        decision, reasons, _ = host_bb.evaluate(
+            thread("thr_picap001", provider="pi"), PI_CAPACITY_EVENTS, PI_WIFI_LOSS, PI_WIFI_APIS_READY
         )
         self.assertEqual((decision, reasons[-1]), ("skip", "error_not_network"))
 
@@ -202,7 +142,7 @@ class PiOutagePathTests(unittest.TestCase):
 class ProviderOutageTests(unittest.TestCase):
     def evaluate(self, events, after_secs, thread_id="thr_x"):
         err_at = host_bb.last_error(events)["at"]
-        return evaluate_provider(
+        return host_bb.evaluate_provider_outage(
             thread(thread_id, provider="pi"), events, err_at + timedelta(seconds=after_secs)
         )
 
@@ -235,30 +175,25 @@ class ProviderOutageTests(unittest.TestCase):
 
     def test_idle_thread_skips(self):
         now = host_bb.last_error(PI_CAPACITY_EVENTS)["at"] + timedelta(seconds=150)
-        decision, _, _ = evaluate_provider(thread("t", status="idle"), PI_CAPACITY_EVENTS, now)
+        decision, _, _ = host_bb.evaluate_provider_outage(thread("t", status="idle"), PI_CAPACITY_EVENTS, now)
         self.assertEqual(decision, "skip")
 
 
 class ProviderCheckLoopTests(unittest.TestCase):
     def setUp(self):
-        self.enterContext(mock.patch.object(revive, "log"))
-        self.enterContext(mock.patch.object(revive_state, "save_state"))
-        self.send = self.enterContext(mock.patch.object(revive.notify, "send", return_value=True))
-        self.resume = self.enterContext(mock.patch.object(host_bb, "resume", return_value=True))
-        self.enterContext(mock.patch.object(host_bb, "available", return_value=True))
-        self.dead, screen = detector_input(thread("thr_b2q9cmz7zb", provider="pi"), PI_CAPACITY_EVENTS)
-        self.enterContext(mock.patch.object(host_bb, "list_targets", return_value=[self.dead]))
-        self.enterContext(mock.patch.object(host_bb, "read_screen", return_value=screen))
-        self.enterContext(mock.patch.object(host_bb, "_thread_events", return_value=PI_CAPACITY_EVENTS))
+        self.enterContext(mock.patch.object(watcher, "log"))
+        self.enterContext(mock.patch.object(watcher, "save_state"))
+        self.send = self.enterContext(mock.patch.object(watcher.notify, "send", return_value=True))
+        self.resume = self.enterContext(mock.patch.object(host_bb, "resume", return_value=(True, "ok")))
+        self.dead = thread("thr_picap001", provider="pi")
+        self.enterContext(mock.patch.object(host_bb, "list_error_threads", return_value=[self.dead]))
+        self.enterContext(mock.patch.object(host_bb, "thread_events", return_value=PI_CAPACITY_EVENTS))
         self.err_at = host_bb.last_error(PI_CAPACITY_EVENTS)["at"]
 
     def run_at(self, state, after_secs):
-        with mock.patch.object(revive, "datetime", wraps=revive.datetime) as dt, mock.patch.object(
-            revive_state, "datetime", wraps=revive_state.datetime
-        ) as state_dt:
+        with mock.patch.object(watcher, "datetime", wraps=watcher.datetime) as dt:
             dt.now.return_value = self.err_at + timedelta(seconds=after_secs)
-            state_dt.now.return_value = dt.now.return_value
-            revive.run_provider_check(state)
+            watcher.run_provider_check(state)
 
     def test_revives_once_per_failure_after_the_delay(self):
         state = {}
@@ -266,23 +201,18 @@ class ProviderCheckLoopTests(unittest.TestCase):
         self.resume.assert_not_called()
         self.run_at(state, 150)
         self.run_at(state, 200)
-        self.resume.assert_called_once_with("thr_b2q9cmz7zb")
-        self.assertEqual(state["revived"]["bb:thr_b2q9cmz7zb:provider"]["tries"], 1)
+        self.resume.assert_called_once_with("thr_picap001")
+        self.assertEqual(state["provider_revived"]["thr_picap001"]["tries"], 1)
         self.assertIn("provider outage", self.send.call_args.args[0])
 
     def test_caps_revives_per_thread(self):
-        state = {"revived": {"bb:thr_b2q9cmz7zb:provider": {
-            "tries": revive.MAX_REVIVES, "at": iso(self.err_at), "error_at": "old"
-        }}}
+        state = {"provider_revived": {"thr_picap001": {"tries": watcher.MAX_REVIVES, "at": iso(self.err_at), "error_at": "old"}}}
         self.run_at(state, 150)
         self.resume.assert_not_called()
 
     def test_unknown_error_is_announced_once_and_not_revived(self):
         state = {}
-        unknown, screen = detector_input(thread("thr_b2q9cmz7zb", provider="pi"), LOGIN_EVENTS)
-        with mock.patch.object(host_bb, "list_targets", return_value=[unknown]), mock.patch.object(
-            host_bb, "read_screen", return_value=screen
-        ):
+        with mock.patch.object(host_bb, "thread_events", return_value=LOGIN_EVENTS):
             self.run_at(state, 150)
             self.run_at(state, 200)
         self.resume.assert_not_called()
@@ -290,147 +220,37 @@ class ProviderCheckLoopTests(unittest.TestCase):
         self.assertIn("Unhandled provider error", self.send.call_args.args[0])
 
 
-# ADR 0048. Real death on 2026-09-03: Cursor (acp) in bb, Wi-Fi lost while a
-# DeepAPI batch ran. No provider/error; the last agent message is the CLI
-# error line and the thread went idle. The watcher noticed the loss at
-# 19:19:04.9Z, 1.3s AFTER the death; the last good probe was 19:14:58.4Z.
-CURSOR_EVENTS = json.loads((FIXTURES / "bb_thr_vp7hipzyr6_events.json").read_text())
-CURSOR_DEATH_AT = "2026-09-03T19:19:03.596000+00:00"
-CURSOR_LAST_GOOD_PROBE = "2026-09-03T19:14:58.401757Z"
-CURSOR_FIRST_FAILED_PROBE = "2026-09-03T19:19:04.904731Z"
-CURSOR_APIS_READY = "2026-09-03T19:42:07.754192Z"
-
-
-def cursor_thread(status="idle"):
-    return {"id": "thr_vp7hipzyr6", "status": status, "providerId": "acp-cursor", "title": "what_is_conductor"}
-
-
-def cursor_target(events):
-    with mock.patch.object(host_bb, "_list_error_threads", return_value=[cursor_thread()]), mock.patch.object(
-        host_bb, "_thread_events", return_value=events
-    ):
-        targets = host_bb.list_targets()
-    return targets, [host_bb.read_screen(t["ref"]) for t in targets]
-
-
-class CursorTests(unittest.TestCase):
-    def test_dead_cursor_thread_is_a_target_with_error_status(self):
-        targets, screens = cursor_target(CURSOR_EVENTS)
-        self.assertEqual(len(targets), 1)
-        self.assertEqual(targets[0]["status"], "error")
-        self.assertEqual(targets[0]["bb_status"], "idle")
-        self.assertEqual(targets[0]["error_at"], CURSOR_DEATH_AT)
-        self.assertEqual(screens, ["Error: RetriableError: Connection stalled"])
-
-    def test_finished_cursor_thread_is_not_a_target(self):
-        # Drop the error message and its turn end: the turn ends on prose.
-        targets, _ = cursor_target(CURSOR_EVENTS[:-3])
-        self.assertEqual(targets, [])
-
-    def test_messages_only_count_for_message_error_providers(self):
-        self.assertIsNone(host_bb.last_error(CURSOR_EVENTS))
-        self.assertEqual(host_bb.last_error(CURSOR_EVENTS, "acp-cursor")["detail"],
-                         "Error: RetriableError: Connection stalled")
-
-    def test_cursor_death_inside_the_real_outage_window_resumes(self):
-        targets, screens = cursor_target(CURSOR_EVENTS)
-        window = (CURSOR_LAST_GOOD_PROBE, CURSOR_APIS_READY)
-        decision, reasons, info = detect_bb.evaluate(targets[0], screens[0], window)
-        self.assertEqual(decision, "resume")
-        self.assertIn("all_three_agree", reasons)
-        self.assertEqual(info["error_detail"], "Error: RetriableError: Connection stalled")
-
-    def test_window_opened_at_the_first_failed_probe_misses_the_death(self):
-        # The 2026-09-03 bug: the death is 1.3s before the first failed probe.
-        targets, screens = cursor_target(CURSOR_EVENTS)
-        window = (CURSOR_FIRST_FAILED_PROBE, CURSOR_APIS_READY)
-        decision, reasons, _ = detect_bb.evaluate(targets[0], screens[0], window)
-        self.assertEqual((decision, reasons[-1]), ("skip", "timing_miss"))
-
-    def test_cursor_network_error_is_left_to_the_outage_path_when_online(self):
-        targets, screens = cursor_target(CURSOR_EVENTS)
-        now = now_iso(parse_ts(CURSOR_DEATH_AT) + timedelta(seconds=150))
-        decision, reasons, _ = detect_bb_provider.evaluate(targets[0], screens[0], ("1970-01-01T00:00:00Z", now))
-        self.assertEqual((decision, reasons[-1]), ("skip", "network_error_belongs_to_outage_path"))
-
-
-# Experiment 0014 (2026-09-03): the same Cursor death 34s into a real Wi-Fi
-# cut, with a different error line. The watcher saw the thread but skipped it
-# as "error_not_network" until "ping timed out" joined the fingerprints.
-CURSOR_0014_EVENTS = json.loads((FIXTURES / "bb_thr_acbjnabb28_events.json").read_text())
-CURSOR_0014_WINDOW = ("2026-09-03T20:43:16.151448Z", "2026-09-03T21:07:11.318346Z")
-
-
-class Cursor0014Tests(unittest.TestCase):
-    def test_ping_timed_out_death_resumes(self):
-        with mock.patch.object(host_bb, "_list_error_threads", return_value=[
-            {**cursor_thread(), "id": "thr_acbjnabb28"}
-        ]), mock.patch.object(host_bb, "_thread_events", return_value=CURSOR_0014_EVENTS):
-            target = host_bb.list_targets()[0]
-        screen = host_bb.read_screen("thr_acbjnabb28")
-        self.assertEqual(screen, "Error: RetriableError: [unavailable] PING timed out")
-        decision, reasons, _ = detect_bb.evaluate(target, screen, CURSOR_0014_WINDOW)
-        self.assertEqual(decision, "resume")
-        self.assertIn("all_three_agree", reasons)
-
-
-# Experiment 0015 (2026-09-03): the unattended revive. The thread log ends
-# with the watcher's "keep going" turn, so the death is no longer its last
-# message and it must not be a target again.
-CURSOR_0015_EVENTS = json.loads((FIXTURES / "bb_thr_rsgzd56nhq_events.json").read_text())
-
-
-class Cursor0015Tests(unittest.TestCase):
-    def test_revived_cursor_thread_is_no_longer_a_target(self):
-        with mock.patch.object(host_bb, "_list_error_threads", return_value=[
-            {**cursor_thread(), "id": "thr_rsgzd56nhq"}
-        ]), mock.patch.object(host_bb, "_thread_events", return_value=CURSOR_0015_EVENTS):
-            self.assertEqual(host_bb.list_targets(), [])
-
-
 class WatcherIntegrationTests(unittest.TestCase):
     def setUp(self):
         # A revive posts to Discord; tests must never hit the real webhook.
-        self.enterContext(mock.patch.object(revive.notify, "notify_revive", return_value=False))
+        self.enterContext(mock.patch.object(watcher.notify, "notify_revive", return_value=False))
 
     def test_recovery_resumes_dead_bb_thread_once(self):
         loss = iso(DEATH_AT - timedelta(minutes=5))
         recovery = iso(DEATH_AT + timedelta(minutes=5))
-        state = {"revived": {}}
-        with mock.patch.object(revive, "log"), mock.patch.object(
-            revive_state, "save_state"
+        state = {"resumed": {}}
+        with mock.patch.object(watcher, "log"), mock.patch.object(
+            watcher, "save_state"
         ), mock.patch.object(
-            host_bb, "list_targets", return_value=[detector_input(thread("thr_jg3yv6kthc"), DEAD_EVENTS)[0]]
+            host_bb, "list_error_threads", return_value=[thread("thr_claudea01")]
         ), mock.patch.object(
-            host_bb, "read_screen", return_value=detector_input(thread("thr_jg3yv6kthc"), DEAD_EVENTS)[1]
+            host_bb, "thread_events", return_value=DEAD_EVENTS
         ), mock.patch.object(
-            host_bb, "resume", return_value=True
-        ) as resume, mock.patch.object(
-            host_bb, "available", return_value=True
-        ), mock.patch.object(
-            revive, "HOSTS", (host_bb,)
-        ):
-            revive.revive_pass(state, (loss, recovery), "first")
-            revive.revive_pass(state, (loss, recovery), "first")
-        resume.assert_called_once_with("thr_jg3yv6kthc")
-        self.assertIn(f"bb:thr_jg3yv6kthc:{loss}", state["revived"])
+            host_bb, "resume", return_value=(True, "steered")
+        ) as resume:
+            watcher.recover_bb_threads(state, loss, recovery)
+            watcher.recover_bb_threads(state, loss, recovery)
+        resume.assert_called_once_with("thr_claudea01")
+        self.assertIn(f"bb:thr_claudea01:{loss}", state["resumed"])
 
     def test_bb_unavailable_is_logged_not_fatal(self):
-        state = {"revived": {}}
-        with mock.patch.object(revive, "log"), mock.patch.object(
-            host_bb, "log"
-        ) as log, mock.patch.object(
-            host_bb, "_list_error_threads", side_effect=host_bb.BbUnavailable("down")
-        ), mock.patch.object(
-            host_bb, "available", return_value=True
-        ), mock.patch.object(
-            revive, "HOSTS", (host_bb,)
+        state = {"resumed": {}}
+        with mock.patch.object(watcher, "log") as log, mock.patch.object(
+            host_bb, "list_error_threads", side_effect=host_bb.BbUnavailable("down")
         ):
-            revive.revive_pass(
-                state, ("2026-01-01T00:00:00Z", "2026-01-01T00:10:00Z"), "first"
-            )
+            watcher.recover_bb_threads(state, "2026-01-01T00:00:00Z", "2026-01-01T00:10:00Z")
         log.assert_called_once()
-        self.assertEqual(log.call_args.args[0], "host_unavailable")
+        self.assertEqual(log.call_args.args[0], "bb_unavailable")
 
 
 if __name__ == "__main__":

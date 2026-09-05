@@ -1,3 +1,0 @@
-{"type":"assistant","timestamp":"2026-08-21T15:59:21.399Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash"}],"stop_reason":"tool_use"}}
-{"type":"user","timestamp":"2026-08-21T15:59:22.712Z","message":{"role":"user","content":[{"type":"tool_result","content":"Python 3.14.6"}]}}
-{"type":"assistant","timestamp":"2026-08-21T16:00:36.898Z","message":{"role":"assistant","content":[{"type":"text","text":"API Error: Connection lost mid-response. The response above may be incomplete."}],"stop_reason":"stop_sequence"},"error":"server_error","isApiErrorMessage":true}

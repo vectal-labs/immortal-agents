@@ -1,0 +1,8 @@
+π - workdir
+
+  Error: terminated
+  Error: Connection error.
+  Retrying (2/3) in 4s... (escape to cancel)
+  Error: Retry failed after 3 attempts: Connection error.
+
+  4.5%/1.0M  example-model

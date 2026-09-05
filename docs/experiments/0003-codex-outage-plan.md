@@ -1,6 +1,6 @@
 # Experiment 0003 — Codex outage staging plan
 
-Prepared only. David launches the network cut later. Agents never run an
+Prepared only. The operator launches the network cut later. Agents never run an
 outage command or type into these panes.
 
 ## Stage
@@ -18,7 +18,7 @@ outage command or type into these panes.
   - **Pane 4 (finished):** complete a short task, leave the clean prompt idle.
   - **Pane 5 (waiting):** stop at a real command or file-change approval
     prompt.
-- David performs and timestamps the three revival treatments after restore.
+- The operator performs and timestamps the three revival treatments after restore.
   Keep observing well after restore — the reported hang outlives the outage.
 
 ## Capture
@@ -32,7 +32,7 @@ outage command or type into these panes.
   control remains hung.
 - For pane 3, record the killed process/session, `codex resume` result, and how
   the original and resumed rollout files relate.
-- Preserve watcher decision lines. Mark David's manual treatments separately
+- Preserve watcher decision lines. Mark the operator's manual treatments separately
   and confirm the watcher sent no Codex input.
 
 ## Expected proof

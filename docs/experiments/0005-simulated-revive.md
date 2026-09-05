@@ -3,10 +3,10 @@
 Date: 2026-08-29. First run of the ADR 0035 loop: no real internet cut. Test
 sessions pointed at the fake-outage proxies (`sim/proxy.py`: Codex on 10199
 with 502 dead mode, Claude on 10198 with drop dead mode); `sim.py on --minutes 6`
-flipped both proxies dead and told the watcher it was offline. David's Mac
+flipped both proxies dead and told the watcher it was offline. The operator's Mac
 stayed online throughout.
 
-## Setup (cmux OFFLINE_TEST, shared cwd ~/project)
+## Setup (cmux OFFLINE_TEST, shared cwd ~/code)
 
 - surfaces 1-2: Codex via `codex -c 'openai_base_url="http://127.0.0.1:10199/v1"'`,
   long chat-only essay task
@@ -18,7 +18,7 @@ stayed online throughout.
 ## Timeline (UTC)
 
 - 11:15:35 `sim.py on --minutes 6`; watcher `to_offline` at 11:15:37
-- 11:21:23 David closed the lid — clamshell sleep until 11:34:22 (unplanned,
+- 11:21:23 the operator closed the lid — clamshell sleep until 11:34:22 (unplanned,
   and a great extra test)
 - 11:34:26 watcher wakes, flag expired (`sim_expired`); 11:35:48 real probe
   online → `recovery`, measured duration 1211s
@@ -38,7 +38,7 @@ stayed online throughout.
   "Ask Codex to do anythi", so the marker "ask codex to do anything" missed.
   Fixed: marker is now "ask codex". Replays and tests still pass.
 - **surface 5 (idle Codex):** `skip`, pane=other. ✅
-- `resume_sent` count: 2. False positives: 0. Internet lost by David: none.
+- `resume_sent` count: 2. False positives: 0. Internet lost by the operator: none.
 
 ## Findings
 

@@ -1,3 +1,0 @@
-curl: (6) Could not resolve host: captive.apple.com
-http_code=000
-curl_fail

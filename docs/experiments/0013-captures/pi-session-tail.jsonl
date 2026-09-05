@@ -1,0 +1,2 @@
+{"type": "message", "id": "m-0009", "parentId": "m-0008", "timestamp": "2026-09-03T09:08:17.000Z", "message": {"role": "user", "content": [{"type": "text", "text": "Write a history of Pacific telephone cables."}]}}
+{"type": "message", "id": "m-0010", "parentId": "m-0009", "timestamp": "2026-09-03T09:26:34.000Z", "message": {"role": "assistant", "content": [], "stopReason": "error", "errorMessage": "Connection error."}}

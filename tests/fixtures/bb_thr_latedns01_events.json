@@ -1,0 +1,254 @@
+[
+  {
+    "id": "evt_ld01",
+    "scope": {
+      "kind": "turn",
+      "turnId": "turn-b-t51"
+    },
+    "threadId": "thr_latedns01",
+    "seq": 2074,
+    "createdAt": 1788427540928,
+    "type": "provider/error",
+    "data": {
+      "providerThreadId": "pt-late-dns-0001",
+      "message": "Provider error",
+      "detail": "Claude Code API retry 1/10 after 521ms: unknown",
+      "willRetry": true,
+      "errorInfo": {
+        "category": "unknown",
+        "providerCode": "unknown",
+        "httpStatusCode": null
+      }
+    }
+  },
+  {
+    "id": "evt_ld02",
+    "scope": {
+      "kind": "turn",
+      "turnId": "turn-b-t51"
+    },
+    "threadId": "thr_latedns01",
+    "seq": 2075,
+    "createdAt": 1788427541456,
+    "type": "provider/error",
+    "data": {
+      "providerThreadId": "pt-late-dns-0001",
+      "message": "Provider error",
+      "detail": "Claude Code API retry 2/10 after 1026ms: unknown",
+      "willRetry": true,
+      "errorInfo": {
+        "category": "unknown",
+        "providerCode": "unknown",
+        "httpStatusCode": null
+      }
+    }
+  },
+  {
+    "id": "evt_ld03",
+    "scope": {
+      "kind": "turn",
+      "turnId": "turn-b-t51"
+    },
+    "threadId": "thr_latedns01",
+    "seq": 2076,
+    "createdAt": 1788427542492,
+    "type": "provider/error",
+    "data": {
+      "providerThreadId": "pt-late-dns-0001",
+      "message": "Provider error",
+      "detail": "Claude Code API retry 3/10 after 2082ms: unknown",
+      "willRetry": true,
+      "errorInfo": {
+        "category": "unknown",
+        "providerCode": "unknown",
+        "httpStatusCode": null
+      }
+    }
+  },
+  {
+    "id": "evt_ld04",
+    "scope": {
+      "kind": "turn",
+      "turnId": "turn-b-t51"
+    },
+    "threadId": "thr_latedns01",
+    "seq": 2077,
+    "createdAt": 1788427544586,
+    "type": "provider/error",
+    "data": {
+      "providerThreadId": "pt-late-dns-0001",
+      "message": "Provider error",
+      "detail": "Claude Code API retry 4/10 after 4659ms: unknown",
+      "willRetry": true,
+      "errorInfo": {
+        "category": "unknown",
+        "providerCode": "unknown",
+        "httpStatusCode": null
+      }
+    }
+  },
+  {
+    "id": "evt_ld05",
+    "scope": {
+      "kind": "turn",
+      "turnId": "turn-b-t51"
+    },
+    "threadId": "thr_latedns01",
+    "seq": 2078,
+    "createdAt": 1788427549265,
+    "type": "provider/error",
+    "data": {
+      "providerThreadId": "pt-late-dns-0001",
+      "message": "Provider error",
+      "detail": "Claude Code API retry 5/10 after 8905ms: unknown",
+      "willRetry": true,
+      "errorInfo": {
+        "category": "unknown",
+        "providerCode": "unknown",
+        "httpStatusCode": null
+      }
+    }
+  },
+  {
+    "id": "evt_ld06",
+    "scope": {
+      "kind": "turn",
+      "turnId": "turn-b-t51"
+    },
+    "threadId": "thr_latedns01",
+    "seq": 2079,
+    "createdAt": 1788427558169,
+    "type": "provider/error",
+    "data": {
+      "providerThreadId": "pt-late-dns-0001",
+      "message": "Provider error",
+      "detail": "Claude Code API retry 6/10 after 18993ms: unknown",
+      "willRetry": true,
+      "errorInfo": {
+        "category": "unknown",
+        "providerCode": "unknown",
+        "httpStatusCode": null
+      }
+    }
+  },
+  {
+    "id": "evt_ld07",
+    "scope": {
+      "kind": "turn",
+      "turnId": "turn-b-t51"
+    },
+    "threadId": "thr_latedns01",
+    "seq": 2080,
+    "createdAt": 1788427577176,
+    "type": "provider/error",
+    "data": {
+      "providerThreadId": "pt-late-dns-0001",
+      "message": "Provider error",
+      "detail": "Claude Code API retry 7/10 after 39155ms: unknown",
+      "willRetry": true,
+      "errorInfo": {
+        "category": "unknown",
+        "providerCode": "unknown",
+        "httpStatusCode": null
+      }
+    }
+  },
+  {
+    "id": "evt_ld08",
+    "scope": {
+      "kind": "turn",
+      "turnId": "turn-b-t51"
+    },
+    "threadId": "thr_latedns01",
+    "seq": 2081,
+    "createdAt": 1788427616345,
+    "type": "provider/error",
+    "data": {
+      "providerThreadId": "pt-late-dns-0001",
+      "message": "Provider error",
+      "detail": "Claude Code API retry 8/10 after 38663ms: unknown",
+      "willRetry": true,
+      "errorInfo": {
+        "category": "unknown",
+        "providerCode": "unknown",
+        "httpStatusCode": null
+      }
+    }
+  },
+  {
+    "id": "evt_ld09",
+    "scope": {
+      "kind": "turn",
+      "turnId": "turn-b-t51"
+    },
+    "threadId": "thr_latedns01",
+    "seq": 2082,
+    "createdAt": 1788427655014,
+    "type": "provider/error",
+    "data": {
+      "providerThreadId": "pt-late-dns-0001",
+      "message": "Provider error",
+      "detail": "Claude Code API retry 9/10 after 39855ms: unknown",
+      "willRetry": true,
+      "errorInfo": {
+        "category": "unknown",
+        "providerCode": "unknown",
+        "httpStatusCode": null
+      }
+    }
+  },
+  {
+    "id": "evt_ld10",
+    "scope": {
+      "kind": "turn",
+      "turnId": "turn-b-t51"
+    },
+    "threadId": "thr_latedns01",
+    "seq": 2083,
+    "createdAt": 1788427694880,
+    "type": "provider/error",
+    "data": {
+      "providerThreadId": "pt-late-dns-0001",
+      "message": "Provider error",
+      "detail": "Claude Code API retry 10/10 after 32879ms: unknown",
+      "willRetry": true,
+      "errorInfo": {
+        "category": "unknown",
+        "providerCode": "unknown",
+        "httpStatusCode": null
+      }
+    }
+  },
+  {
+    "id": "evt_ld11",
+    "scope": {
+      "kind": "turn",
+      "turnId": "turn-b-t51"
+    },
+    "threadId": "thr_latedns01",
+    "seq": 2087,
+    "createdAt": 1788427727698,
+    "type": "provider/error",
+    "data": {
+      "providerThreadId": "pt-late-dns-0001",
+      "message": "Provider error",
+      "detail": "API Error: Can't reach the API server — check your internet or DNS (ENOTFOUND)"
+    }
+  },
+  {
+    "id": "evt_ld12",
+    "scope": {
+      "kind": "turn",
+      "turnId": "turn-b-t51"
+    },
+    "threadId": "thr_latedns01",
+    "seq": 2088,
+    "createdAt": 1788427727698,
+    "type": "turn/completed",
+    "data": {
+      "providerThreadId": "pt-late-dns-0001",
+      "status": "failed",
+      "providerCheckpointId": "ckpt-0003"
+    }
+  }
+]

@@ -7,11 +7,11 @@ risk: the script restored itself, timer and netguard had nothing to do.
 
 ## Setup (bb project offline-agent-restart, all chat-only)
 
-- `thr_tumwpigjd7` — Claude Code, 12-part essay, mid-task → expect `resume`
-- `thr_6fx6nki7iu` — Codex, same essay, mid-task → learn death mode
-- `thr_d39jwnheac` — Claude Code, one sentence, finished (`idle`) → guard
-- `thr_2y9crng5ku` — Claude Code, waiting on `AskUserQuestion` (status `active`, pending interaction) → guard, must never be touched
-- Watcher daemon pid 743 (post-reboot). Capture loop every 60s → `0007-captures/`.
+- `thr_e07claude` — Claude Code, 12-part essay, mid-task → expect `resume`
+- `thr_e07codex1` — Codex, same essay, mid-task → learn death mode
+- `thr_e07done01` — Claude Code, one sentence, finished (`idle`) → guard
+- `thr_e07askq01` — Claude Code, waiting on `AskUserQuestion` (status `active`, pending interaction) → guard, must never be touched
+- Watcher daemon freshly started (post-reboot). Capture loop every 60s → `0007-captures/` (synthetic stand-ins kept).
 
 ## Timeline (UTC)
 
@@ -38,11 +38,11 @@ risk: the script restored itself, timer and netguard had nothing to do.
 
 ## Findings
 
-1. **The 409 was stale code, not a wrong fix.** The daemon (pid 743) started
+1. **The 409 was stale code, not a wrong fix.** The daemon started
    at 23:52 local after the reboot; `--mode auto` landed in `host_bb.py` at
    00:09. Nobody restarted the daemon. The fixed command was then proven by
    hand on the same dead thread: `error → active`, essay continued. Daemon
-   restarted (pid 13366). **Rule: restart the daemon after every code change,
+   restarted. **Rule: restart the daemon after every code change,
    and log the exact command sent** (added to the checklist below).
 2. **Codex inside bb survived 8 and 12 minute cuts** (0006, 0007). It
    reconnected every ~63s and completed the turn 4m40s after recovery. No
@@ -59,7 +59,7 @@ risk: the script restored itself, timer and netguard had nothing to do.
    no error during the outage. The `status == error` filter alone protects it.
 5. **ADR 0037 mechanics work.** Precondition guard aborted a run without a
    timer; the cut ran from a bb terminal and restored itself; the marker files
-   were cleaned up; netguard logged nothing. David kept working.
+   were cleaned up; netguard logged nothing. The operator kept working.
 
 ## Status
 
@@ -76,4 +76,4 @@ risk: the script restored itself, timer and netguard had nothing to do.
 2. `launchctl list | grep netguard`
 3. `bb terminal create … restore-timer.sh <outage+2>`
 4. `bb terminal create … 0001-run-outage.sh` with `OUTAGE_SECS` ≥ 360 for a bb Claude thread
-5. Announce start/end to David
+5. Announce start/end to the operator

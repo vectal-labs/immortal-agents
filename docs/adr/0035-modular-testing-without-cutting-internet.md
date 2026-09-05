@@ -3,7 +3,7 @@
 ## Context
 
 Every meaningful change so far ended in a full machine-wide internet cut
-(experiments 0001-0004). Each one makes David's MacBook unusable for
+(experiments 0001-0004). Each one makes the operator's MacBook unusable for
 10-15 minutes — a real productivity killer, and it makes "prove it live"
 (ADR 0034) expensive enough that it gets postponed. The trigger (probe loop +
 outage timing) is already proven; re-testing it on every change is waste.
@@ -30,7 +30,7 @@ running session.
 
 ## Consequences
 
-- David keeps working while harness revives are tested.
+- The operator keeps working while harness revives are tested.
 - Replays stop being throwaway scripts and become the test suite.
 - The proxy must reproduce each harness's real death (Codex: 502 Provider
   unreachable — it already speaks to a local proxy; Claude: connection

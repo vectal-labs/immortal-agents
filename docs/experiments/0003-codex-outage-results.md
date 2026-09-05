@@ -1,6 +1,6 @@
 # Experiment 0003 — Results: Codex survives prolonged outages
 
-Date: 2026-08-23. Real all-route cut, David-authorized, armed detached.
+Date: 2026-08-23. Real all-route cut, operator-authorized, armed detached.
 Staging per 0003-codex-outage-plan.md: five Codex v0.149 panes (`gpt-5.6-sol
 high fast`), shared cwd — three identical mid-task essay sessions (revival
 arm), one finished, one waiting at an approval prompt.
