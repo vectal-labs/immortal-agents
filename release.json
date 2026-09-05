@@ -1,4 +1,13 @@
 {
   "schema": 1,
-  "releases": []
+  "releases": [
+    {
+      "version": "0.1.0",
+      "published_at": "2026-09-05",
+      "important": true,
+      "summary": "Adds BB daemon recovery, native Mac update alerts, and a safe update command. Existing users need a one-time reinstall.",
+      "commit": "6f92cdccf316a36917436e89656cdbccfd421d75",
+      "notes_url": "https://github.com/vectal-labs/immortal-agents/releases/tag/v0.1.0"
+    }
+  ]
 }
