@@ -152,6 +152,26 @@ class EvaluateTests(unittest.TestCase):
         self.assertEqual(decision, "resume")
         self.assertTrue(info)
 
+    def test_real_claude_project_slug_with_dots_and_underscores(self):
+        self.target['cwd'] = '/nonexistent/.bb/thread_storage/My-project'
+        folder = self.projects / '-nonexistent--bb-thread-storage-My-project'
+        folder.mkdir()
+        session = folder / 'session.jsonl'
+        session.write_text((FIXTURES / 'dead-network.jsonl').read_text())
+        decision, info = self.assert_reason('all_three_agree', self.dead_pane)
+        self.assertEqual(decision, 'resume')
+        self.assertEqual(info['path'], str(session))
+
+    def test_old_project_slug_remains_readable(self):
+        self.target['cwd'] = '/nonexistent/.bb/thread_storage/My-project'
+        folder = self.projects / '-nonexistent-.bb-thread_storage-My-project'
+        folder.mkdir()
+        session = folder / 'session.jsonl'
+        session.write_text((FIXTURES / 'dead-network.jsonl').read_text())
+        decision, info = self.assert_reason('all_three_agree', self.dead_pane)
+        self.assertEqual(decision, 'resume')
+        self.assertEqual(info['path'], str(session))
+
 
 if __name__ == "__main__":
     unittest.main()

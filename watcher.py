@@ -13,7 +13,6 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
-from immortal.core import ready
 import revive
 from immortal.core.common import STATE_DIR, now_iso
 from immortal.core.logbook import load_state, log, save_state
@@ -64,16 +63,7 @@ def on_recovery(state, loss_at, recovery_at, duration):
     if duration < MIN_OUTAGE_SECS:
         log("skip_recovery", reason="outage_too_short", duration_secs=duration)
         return
-    ready.wait_for_apis()
-    # Experiment 0013: the captive probe passed 101s before api.anthropic.com
-    # resolved, and three bb threads died in that gap. For the agents the
-    # outage ends when their APIs resolve, so that is the window end every
-    # detector gets. The probe time stays in the log and in the duration.
-    api_ready_at = now_iso()
-    state["last_api_ready_at"] = api_ready_at
-    log("outage_window", loss_at=loss_at, probe_recovery_at=recovery_at, api_ready_at=api_ready_at)
-    revive.revive_pass(state, (loss_at, api_ready_at), "first")
-    revive.arm_recheck(state, loss_at, duration)
+    revive.queue_recovery(state, loss_at, recovery_at, duration)
 
 
 def acquire_single_instance_lock():
@@ -114,15 +104,19 @@ def loop():
                     start = datetime.fromisoformat(loss.replace("Z", "+00:00"))
                     duration = (datetime.now(timezone.utc) - start).total_seconds()
                 state["last_recovery_at"] = recovery
-                state["outage_started_at"] = None
                 log("state_change", change="offline_to_online", at=recovery, duration_secs=duration)
                 on_recovery(state, loss, recovery, duration)
-            elif online:
-                revive.run_recheck(state)
-                revive.run_provider_check(state)
+                state["outage_started_at"] = None
             state["online"] = online
             state["last_probe_at"] = now_iso()
             save_state(state)
+            if online:
+                for name, tick in (("recheck", revive.run_recheck), ("provider", revive.run_provider_check)):
+                    try:
+                        tick(state)
+                    except Exception as exc:
+                        log("recovery_tick_error", tick=name, error=str(exc))
+                save_state(state)
             if os.environ.get("WATCHER_ONCE"):
                 log("once_exit")
                 return

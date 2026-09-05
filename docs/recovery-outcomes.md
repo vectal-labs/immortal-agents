@@ -2,6 +2,19 @@
 
 `revive_attempt.result` records prompt delivery. It does not mean the agent resumed work.
 
+Ordinary recovery saves an attempt and its observation before sending input.
+`delivery` distinguishes `sent`, `queued`, `not_sent`, `unknown`, and `superseded`.
+Only definite non-delivery is retried for the same error, after a delay and within
+the three-attempt limit. A lost reply is `unknown`; it remains under observation
+without another blind send, including after a later outage. Fresh checks skip changed sessions, new work, queues,
+and pending approvals. bb uses its native request-guarded retry where available.
+
+An outage stays pending until DNS readiness succeeds and its first recovery pass
+completes. Pending work and attempts survive watcher restarts. Failed hosts and
+targets do not stop the remaining scan; the normal recheck window covers later
+attempts. DNS probes run in a bounded child process. Discord delivery runs in a
+bounded background queue; alerts are best effort and may be lost on restart.
+
 After delivery, the watcher checks for new assistant output in the same session
 every 30 seconds while online, for up to 10 minutes:
 

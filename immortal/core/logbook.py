@@ -49,10 +49,18 @@ def load_state():
 
     revived = state.get("revived")
     state["revived"] = {
-        key: entry for key, entry in (revived.items() if isinstance(revived, dict) else ())
+        key: {**entry, "tries": entry.get("tries", 0)} for key, entry in (revived.items() if isinstance(revived, dict) else ())
         if isinstance(entry, dict)
         and type(entry.get("tries", 0)) is int and entry.get("tries", 0) >= 0
     }
+    pending = state.get("pending_recovery")
+    if pending is not None and not (
+        isinstance(pending, dict)
+        and all(parse_ts(pending.get(key)) for key in ("loss_at", "probe_recovery_at"))
+        and type(pending.get("duration")) in (int, float)
+        and 0 <= pending["duration"] < float("inf")
+    ):
+        state["pending_recovery"] = None
     recheck = state.get("recheck")
     if recheck is not None and not (
         isinstance(recheck, dict)

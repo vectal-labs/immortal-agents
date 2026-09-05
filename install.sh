@@ -1,6 +1,6 @@
 #!/bin/bash
 # immortal-agents installer (ADR 0040). One script, zero infrastructure.
-# usage: ./install.sh [install|uninstall|status|logs|check] [--discord <webhook-url>] [--no-telemetry]
+# usage: ./install.sh [install|uninstall|status|logs|check] [--discord <webhook-url>] [--telemetry|--no-telemetry]
 #
 # Never uses `launchctl submit` (Incident 0001: it restarts the job forever).
 # Netguard is installed by David only, by hand; this script never touches it.
@@ -31,13 +31,17 @@ DISCORD_URL=""
 TELEMETRY=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    install|uninstall|status|logs|check) VERB="$1" ;;
+    install|uninstall|status|logs|check|update|notification-test) VERB="$1" ;;
     --discord)
       [ $# -ge 2 ] || { echo "error: --discord needs a webhook URL" >&2; exit 1; }
       DISCORD_URL="$2"; shift ;;
+    --telemetry) TELEMETRY=on ;;
     --no-telemetry) TELEMETRY=off ;;
     -h|--help)
-      sed -n '2,4p' "$0"; exit 0 ;;
+      sed -n '2,4p' "$0"
+      echo "  update              install the latest public release and restart only the watcher"
+      echo "  notification-test   request a test notification from the update LaunchAgent"
+      exit 0 ;;
     *) echo "error: unknown argument: $1" >&2; exit 1 ;;
   esac
   shift
@@ -70,6 +74,47 @@ if [ ! -f "$REPO_DIR/watcher.py" ]; then
   fi
   exec bash "$DEST/install.sh" ${ARGS[@]+"${ARGS[@]}"}
 fi
+
+# Discover Node + bb so launchd can run the bb CLI (`#!/usr/bin/env node`).
+BB_STATUS=""
+_show_bb_result() {
+  local result="$1" line
+  line="$(printf '%s\n' "$result" | grep -E '^(ok|skip|warn|error):' | tail -n 1)"
+  [ -n "$line" ] || line="error:${result:-bb runtime check failed}"
+  case "$line" in
+    ok:*) BB_STATUS=ok; ok "bb: ${line#ok:}" ;;
+    skip:*) BB_STATUS=skip; note "bb: ${line#skip:}" ;;
+    warn:*) BB_STATUS=warn; warn "bb: ${line#warn:}" ;;
+    error:*) BB_STATUS=error; bad "bb: ${line#error:}" ;;
+  esac
+}
+
+run_bb_runtime() {
+  local verb="$1" python3_bin="${2:-$(find_python3)}" result rc=0
+  if [ "$verb" = install ]; then
+    result="$(cd "$REPO_DIR" && WATCHER_STATE_DIR="$STATE_DIR" IMMORTAL_PLIST="$PLIST" \
+      "$python3_bin" -m immortal.core.bb_runtime "$verb" 2>&1)" || rc=$?
+  else
+    result="$(cd "$REPO_DIR" && WATCHER_STATE_DIR="$STATE_DIR" \
+      "$python3_bin" -m immortal.core.bb_runtime "$verb" 2>&1)" || rc=$?
+  fi
+  _show_bb_result "$result"
+  return $rc
+}
+
+setup_bb() { run_bb_runtime install "${1:-}"; }
+probe_bb() { run_bb_runtime check "${1:-}"; }
+
+run_updates() {
+  (cd "$REPO_DIR" && WATCHER_STATE_DIR="$STATE_DIR" PYTHONDONTWRITEBYTECODE=1 \
+    "$(find_python3)" -m immortal.core.updates "$@" --repo "$REPO_DIR")
+}
+setup_updates() { run_updates setup --python "$1"; }
+remove_updates() { run_updates remove; }
+do_update() {
+  (cd "$REPO_DIR" && WATCHER_STATE_DIR="$STATE_DIR" PYTHONDONTWRITEBYTECODE=1 \
+    "$(find_python3)" -m immortal.core.updater)
+}
 
 # The plist's python3 when installed, else PATH's. TCC grants attach to the
 # binary that sends the Apple event, so the probe must use the watcher's python3.
@@ -147,6 +192,11 @@ do_check() {
   probe_host Terminal.app Terminal 'Application("Terminal").windows().length'
   probe_host Ghostty ghostty 'Application("Ghostty").windows().length'
   probe_cmux || { [ $? -eq 1 ] && rc=1; }
+  probe_bb "$python3_bin" || {
+    local bb_rc=$?
+    [ $bb_rc -eq 1 ] && rc=1
+    [ $bb_rc -eq 2 ] && [ $rc -ne 1 ] && rc=2
+  }
   return $rc
 }
 
@@ -204,6 +254,13 @@ bootout_watcher() {
 # Exit 0 = loaded and running, 1 = not.
 do_status() {
   local pid="" last rc=0
+  if [ "$VERB" = status ]; then
+    local telemetry=off
+    if [ -f "$STATE_DIR/telemetry" ] && [ "$(cat "$STATE_DIR/telemetry")" = on ]; then
+      telemetry=on
+    fi
+    note "Optional telemetry: $telemetry"
+  fi
   loaded "$LABEL" && pid="$(launchctl print "$DOMAIN/$LABEL" 2>/dev/null | awk '/^\tpid = /{print $3}')"
   if [ -n "$pid" ]; then
     ok "Watcher loaded and running ${DIM}(pid $pid)${RESET}"
@@ -223,13 +280,20 @@ do_status() {
   else
     note "No watcher.log yet at $STATE_DIR/watcher.log"
   fi
+  probe_bb || true
+  if [ "$VERB" = status ]; then
+    run_updates status || true
+    loaded "com.immortal-agents.updates" || warn "Update checker is not loaded. Run ./install.sh"
+  fi
   return $rc
 }
 
 print_help_lines() {
   echo "  ${DIM}./install.sh status${RESET}   is it running?"
   echo "  ${DIM}./install.sh logs${RESET}     follow the watcher log"
-  echo "  ${DIM}./install.sh check${RESET}    re-run the permission probe"
+  echo "  ${DIM}./install.sh check${RESET}    re-run the permission and bb probes"
+  echo "  ${DIM}./install.sh update${RESET}   install the latest public release"
+  echo "  ${DIM}./install.sh notification-test${RESET}   test Mac update alerts"
 }
 
 do_install() {
@@ -284,6 +348,7 @@ do_install() {
 </plist>
 PLIST
   ok "Wrote $PLIST"
+  setup_bb "$python3_bin" || true
 
   bootout_watcher
   launchctl bootstrap "$DOMAIN" "$PLIST"
@@ -312,8 +377,16 @@ PLIST
   note "Optional telemetry: $TELEMETRY. Disable any time: echo off > $STATE_DIR/telemetry"
   (cd "$REPO_DIR" && "$python3_bin" -c 'from immortal.core import telemetry; t = telemetry.send("install"); t and t.join()') || true
   echo
+  local updates_rc=0
+  setup_updates "$python3_bin" || updates_rc=$?
   if [ $status_rc -ne 0 ]; then
     heading "${RED}Install failed.${RESET} The watcher is not running. See $STATE_DIR/stderr.log"
+  elif [ $updates_rc -ne 0 ]; then
+    heading "${YELLOW}Watcher installed, but update alerts failed.${RESET} Fix the error above and run ./install.sh again"
+  elif [ "$BB_STATUS" = error ]; then
+    heading "${YELLOW}Installed and running, but bb is not ready.${RESET} Fix the bb line above, then run ./install.sh"
+  elif [ "$BB_STATUS" = warn ]; then
+    heading "${YELLOW}Installed and running.${RESET} Open bb, then run ./install.sh check"
   elif [ $check_rc -eq 1 ]; then
     heading "${YELLOW}Installed, but a permission was denied.${RESET} Fix it with the Settings path above, then run ./install.sh check"
   elif [ $check_rc -eq 2 ]; then
@@ -327,11 +400,13 @@ PLIST
   echo
   print_help_lines
   echo
-  return "$status_rc"
+  [ "$status_rc" -eq 0 ] || return "$status_rc"
+  return "$updates_rc"
 }
 
 do_uninstall() {
   echo
+  remove_updates
   bootout_watcher
   if loaded "$LABEL"; then
     bad "$LABEL is still loaded. Try: launchctl bootout $DOMAIN/$LABEL"
@@ -358,4 +433,6 @@ case "$VERB" in
   status) do_status ;;
   logs) do_logs ;;
   check) do_check ;;
+  update) do_update ;;
+  notification-test) run_updates notification-test ;;
 esac

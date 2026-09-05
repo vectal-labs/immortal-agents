@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
 from immortal.detect import bb as bb_detect
@@ -16,12 +17,14 @@ from immortal.hosts import ghostty as host_ghostty
 from immortal.hosts import terminal as host_terminal
 from immortal.core import notify
 from immortal.core import outcomes
+from immortal.core import bb_recovery
 from immortal.core import ready
 from immortal.core import telemetry
 from immortal.core.common import iso_after, now_iso, parse_ts
-from immortal.core.logbook import log
+from immortal.core.logbook import log, save_state
 from immortal.core.revive_state import (
-    MAX_REVIVES, error_at, mark_revived, mark_seen, may_revive, target_key,
+    MAX_REVIVES, error_at, mark_seen, target_key,
+    attempt_allowed, reserve, delivered,
 )
 
 # Experiment 0009: a revive can die again (stale DNS). ADR 0051: also wait
@@ -74,99 +77,159 @@ def _offline_duration(state, window, mode):
     raise ValueError(f"unknown revive mode: {mode}")
 
 
-def _resume(state, host, target, harness, duration, mode, info):
+def _signature(info, target):
+    return error_at(info) or str(target.get("error_identity") or json.dumps(info, sort_keys=True, default=str))
+
+
+def _resume(state, host, target, harness, duration, mode, info, key):
     ref = target["ref"]
     attempt_id = outcomes.track(state, host.NAME, ref, harness, info, host_bb._thread_events)
+    # Observation and reservation must both survive a crash after host acceptance.
+    previous = state.setdefault("revived", {}).get(key)
     try:
-        ok = host.resume(ref)
+        reserve(state, key, now_iso(datetime.now(timezone.utc)),
+                _signature(info, target), mode, attempt_id,
+                target_identity=info.get("path") or f"{host.NAME}:{ref}")
     except Exception:
+        # No external send happened. Do not persist a phantom unknown delivery
+        # if the outer watcher later succeeds in saving this in-memory state.
         outcomes.cancel(state, attempt_id)
+        if previous is None:
+            state["revived"].pop(key, None)
+        else:
+            state["revived"][key] = previous
         raise
-    if not ok:
+    try:
+        delivery = host.resume(target)
+    except Exception as exc:
+        log("resume_error", host=host.NAME, ref=ref, error=str(exc))
+        telemetry.exception(exc)
+        delivery = "unknown"
+    if delivery not in ("sent", "queued", "not_sent", "unknown", "superseded"):
+        delivery = "unknown"
+    if delivery in ("not_sent", "superseded"):
         outcomes.cancel(state, attempt_id)
-    log("resume_sent", host=host.NAME, ref=ref, ok=ok)
-    label = target.get("title") or target.get("cwd") or ref
+    delivered(state, key, delivery)
+    ok = True if delivery in ("sent", "queued") else None if delivery == "unknown" else False
+    log("resume_sent", host=host.NAME, ref=ref, ok=ok, delivery=delivery)
     trigger = "provider_outage" if mode == "provider" else None
-    announce(host.NAME, harness, duration, label, ok,
-             detail=info.get("error_detail") if trigger else None, trigger=trigger)
     telemetry.send("revive_attempt", attempt_id=attempt_id, harness=harness,
                    host=host.NAME, result=ok, error=trigger or "network_outage")
-    return ok
+    if delivery != "superseded":
+        announce(host.NAME, harness, duration, target.get("title") or target.get("cwd") or ref, ok,
+                 detail=info.get("error_detail") if trigger else None, trigger=trigger)
+    return int(delivery in ("sent", "queued"))
+
+
+def _fresh_terminal(host, target, detector, info, window):
+    current = next((item for item in host.list_targets() if isinstance(item, dict) and item.get("ref") == target["ref"]), None)
+    if current is None or any(current.get(k) != target.get(k) for k in ("id", "cwd", "harness_hint")):
+        return None
+    if target.get("recovery_at"):
+        current["recovery_at"] = target["recovery_at"]
+    screen = host.read_screen(current["ref"])
+    name, _ = detect_harness(screen, current.get("title"), current.get("harness_hint"))
+    if name != detector.NAME:
+        return None
+    decision, _, fresh_info = detector.evaluate(current, screen, window)
+    if decision != "resume" or _signature(fresh_info, current) != _signature(info, target):
+        return None
+    return current
+
+
+def _recover_target(state, host, target, window, mode, duration):
+    ref = target["ref"]
+    screen = host.read_screen(ref)
+    if host.NAME == "bb" and (target.get("submission") or target.get("interruption")):
+        if mode != "provider":
+            return 0
+        if target.get("interruption"):
+            return bb_recovery.recover_interruption(state, target, parse_ts(window[1]), announce)
+        return bb_recovery.recover(state, target, screen, parse_ts(window[1]), announce)
+    name, reason = ((host.DETECTOR, "host_detector") if host.DETECTOR else
+                    detect_harness(screen, target.get("title"), target.get("harness_hint")))
+    harness = target.get("harness_hint") if host.DETECTOR else name
+    log("harness_detected", host=host.NAME, ref=ref, harness=harness, reason=reason)
+    if not name:
+        log("decision", host=host.NAME, ref=ref, decision="skip", reasons=[reason], mode=mode)
+        return 0
+    detector = bb_provider_detect if mode == "provider" else DETECTORS[name]
+    if state.get("last_api_ready_at"):
+        target["recovery_at"] = state["last_api_ready_at"]
+    decision, reasons, info = detector.evaluate(target, screen, window)
+    info = info or {}
+    key = target_key(host, target, info, window, mode)
+    entry = state.setdefault("revived", {}).get(key, {})
+    log("decision", host=host.NAME, ref=ref, harness=harness, decision=decision,
+        reasons=reasons, info=info, tries=entry.get("tries", 0), mode=mode)
+    if "silent_hang_observed" in reasons:
+        log("silent_hang_observed", host=host.NAME, ref=ref, acted=False, reasons=reasons)
+    if decision == "unknown":
+        identity = _signature(info, target)
+        if entry.get("seen_error") != identity:
+            mark_seen(state, key, info.get("error_at"))
+            state["revived"][key]["seen_error"] = identity
+            save_state(state)
+            announce(host.NAME, harness, duration, target.get("title") or ref, None,
+                     detail=info.get("error_detail") or "bb reported an error without provider details",
+                     trigger="unhandled_provider_error")
+        return 0
+    if decision != "resume" or not attempt_allowed(
+        state, key, mode, _signature(info, target), datetime.now(timezone.utc),
+        target_identity=info.get("path") or f"{host.NAME}:{ref}",
+    ):
+        return 0
+    if target.get("bb_retry"):
+        info["bb_retry"] = target["bb_retry"]
+    # bb performs the fresh check inside its guarded host action.
+    if host.NAME != "bb":
+        target = _fresh_terminal(host, target, detector, info, window)
+        if target is None:
+            log("decision", host=host.NAME, ref=ref, decision="skip", reasons=["target_changed"], mode=mode)
+            return 0
+    return _resume(state, host, target, harness, duration, mode, info, key)
 
 
 def revive_pass(state, window, mode):
-    """Run one detector-and-revive loop over the hosts selected by mode. Crashes are reported, then re-raised."""
-    try:
-        mode == "first" and telemetry.send("outage_detected")
-        return _revive_pass(state, window, mode)
-    except Exception as exc:
-        telemetry.exception(exc)
-        raise
-
-
-def _revive_pass(state, window, mode):
+    """A failed host or target cannot prevent the others from recovering."""
+    if mode == "first":
+        telemetry.send("outage_detected")
     sent = 0
-    hosts = (host_bb,) if mode == "provider" else HOSTS
     duration = _offline_duration(state, window, mode)
-    for host in hosts:
-        if not host.available():
-            log("host_skipped", host=host.NAME, reason="not_running")
+    for host in ((host_bb,) if mode == "provider" else HOSTS):
+        try:
+            if not host.available():
+                log("host_skipped", host=host.NAME, reason="not_running")
+                continue
+            targets = host.list_targets()
+            if not isinstance(targets, (list, tuple)):
+                raise TypeError("host targets must be a list")
+        except Exception as exc:
+            log("host_error", host=host.NAME, error=str(exc))
+            telemetry.exception(exc)
             continue
-        targets = host.list_targets()
-        log("targets_enumerated", host=host.NAME, count=len(targets), targets=targets)
+        log("targets_enumerated", host=host.NAME, count=len(targets))
         for target in targets:
-            ref = target["ref"]
-            screen = host.read_screen(ref)
-            name, reason = (
-                (host.DETECTOR, "host_detector")
-                if host.DETECTOR
-                else detect_harness(
-                    screen, target.get("title"), target.get("harness_hint")
-                )
-            )
-            harness = target["harness_hint"] if host.DETECTOR else name
-            log("harness_detected", host=host.NAME, ref=ref, title=target.get("title"),
-                harness=harness, reason=reason)
-            if not name:
-                log("decision", host=host.NAME, ref=ref, harness=None,
-                    cwd=target.get("cwd"), title=target.get("title"), decision="skip",
-                    reasons=[reason], info={}, tries=0, mode=mode)
-                continue
-            detector = bb_provider_detect if mode == "provider" else DETECTORS[name]
-            if state.get("last_api_ready_at"):
-                target["recovery_at"] = state["last_api_ready_at"]
-            decision, reasons, info = detector.evaluate(target, screen, window)
-            log("eval", host=host.NAME, ref=ref, harness=harness,
-                cwd=target.get("cwd"), info=info)
-            key = target_key(host, target, info, window, mode)
-            entry = state.setdefault("revived", {}).get(key, {})
-            if mode == "provider" and info.get("error_at") == entry.get("error_at"):
-                continue
-            log("decision", host=host.NAME, ref=ref, harness=harness,
-                cwd=target.get("cwd"), title=target.get("title"), decision=decision,
-                reasons=reasons, info=info, tries=entry.get("tries", 0), mode=mode)
-            if "silent_hang_observed" in reasons:
-                log("silent_hang_observed", host=host.NAME, ref=ref,
-                    cwd=target.get("cwd"), acted=False, reasons=reasons)
-            if decision == "unknown":
-                mark_seen(state, key, info["error_at"])
-                label = target.get("title") or ref
-                announce(host.NAME, harness, duration, label, None,
-                         detail=info["error_detail"], trigger="unhandled_provider_error")
-                continue
-            if decision != "resume":
-                continue
-            if not may_revive(state, key, mode):
-                if mode == "provider":
-                    log("provider_revive_capped", thread=ref, tries=entry.get("tries", 0))
-                    mark_seen(state, key, info["error_at"])
-                continue
-            ok = _resume(state, host, target, harness, duration, mode, info)
-            if ok:
-                sent += 1
-            if ok or mode == "provider":
-                mark_revived(state, key, window[1], error_at(info), mode)
+            try:
+                sent += _recover_target(state, host, target, window, mode, duration)
+            except Exception as exc:
+                log("target_error", host=host.NAME, ref=target.get("ref") if isinstance(target, dict) else None, error=str(exc))
+                telemetry.exception(exc)
     return sent
+
+
+def queue_recovery(state, loss_at, recovery_at, duration):
+    """Persist the outage before any external call; later online ticks drain it."""
+    pending = state.get("pending_recovery") or {}
+    state["pending_recovery"] = {
+        "loss_at": pending.get("loss_at") or loss_at,
+        "probe_recovery_at": recovery_at,
+        "duration": max(pending.get("duration", 0), duration),
+    }
+    state["recheck"] = None
+    state["last_api_ready_at"] = None
+    save_state(state)
+    ready.invalidate()
 
 
 def arm_recheck(state, loss_at, duration):
@@ -181,24 +244,42 @@ def arm_recheck(state, loss_at, duration):
 
 
 def run_recheck(state):
-    """Called every online tick. Re-runs the pass on revived targets; the
-    outage window is stretched to now so an error after the revive counts."""
+    """Advance pending recovery without waiting for DNS in the watcher loop."""
+    pending = state.get("pending_recovery")
     rc = state.get("recheck")
-    if not rc:
+    if not pending and not rc:
         return
     now = datetime.now(timezone.utc)
-    if now < parse_ts(rc["next_at"]):
+    if not pending:
+        if now > parse_ts(rc["until"]):
+            state["recheck"] = None
+            log("recheck_done", loss_at=rc["loss_at"])
+            save_state(state)
+            return
+        if now < parse_ts(rc["next_at"]):
+            return
+    if not ready.check():
         return
-    if now > parse_ts(rc["until"]):
-        state["recheck"] = None
-        log("recheck_done", loss_at=rc["loss_at"])
-        return
-    log("recheck", loss_at=rc["loss_at"])
-    ready.wait_for_apis()
-    if revive_pass(state, (rc["loss_at"], now_iso()), "recheck"):
-        arm_recheck(state, rc["loss_at"], rc["duration"])
+    if pending:
+        at = now_iso(now)
+        state["last_api_ready_at"] = state.get("last_api_ready_at") or at
+        # Keep the first pass pending across crashes, even beyond the normal
+        # recheck deadline. Saved per-target reservations prevent duplicate sends.
+        save_state(state)
+        log("outage_window", loss_at=pending["loss_at"],
+            probe_recovery_at=pending["probe_recovery_at"], api_ready_at=state["last_api_ready_at"])
+        revive_pass(state, (pending["loss_at"], at), "first")
+        arm_recheck(state, pending["loss_at"], pending["duration"])
+        state["pending_recovery"] = None
+        save_state(state)
     else:
+        # Save the next tick first. An external failure cannot make us spin.
         rc["next_at"] = iso_after(now, RECHECK_SECS)
+        save_state(state)
+        log("recheck", loss_at=rc["loss_at"])
+        if revive_pass(state, (rc["loss_at"], now_iso(now)), "recheck"):
+            arm_recheck(state, rc["loss_at"], rc["duration"])
+            save_state(state)
 
 
 def announce(host, harness, offline_secs, label, ok, detail=None, trigger=None):
@@ -216,5 +297,7 @@ def run_provider_check(state):
     state["provider_check_next_at"] = iso_after(now, PROVIDER_CHECK_SECS)
     outcomes.check(state, host_bb._thread_events, now)
     telemetry.heartbeat()
+    if not ready.check():
+        return
     stamp = now_iso(now)
     revive_pass(state, (stamp, stamp), "provider")

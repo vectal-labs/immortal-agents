@@ -1,0 +1,8 @@
+[
+  {"seq":780,"createdAt":1788608096372,"type":"client/turn/requested","data":{"requestId":"request-1"}},
+  {"seq":784,"createdAt":1788608097319,"type":"turn/started","scope":{"kind":"turn","turnId":"turn-1"},"data":{}},
+  {"seq":785,"createdAt":1788608097319,"type":"turn/input/accepted","scope":{"kind":"turn","turnId":"turn-1"},"data":{"clientRequestId":"request-1"}},
+  {"seq":873,"createdAt":1788608253325,"type":"turn/completed","scope":{"kind":"turn","turnId":"turn-1"},"data":{"status":"interrupted"}},
+  {"seq":874,"createdAt":1788608253325,"type":"system/error","scope":{"kind":"turn","turnId":"turn-1"},"data":{"code":"thread_command_failed","message":"Thread interrupted because the host daemon disconnected","detail":"Please retry the thread to continue."}},
+  {"seq":875,"createdAt":1788608253325,"type":"system/thread/interrupted","scope":{"kind":"thread"},"data":{"reason":"host-daemon-restarted"}}
+]

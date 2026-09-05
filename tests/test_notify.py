@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import threading
 import unittest
 from unittest import mock
 
@@ -13,6 +14,7 @@ from immortal.core import notify
 import revive
 from immortal.core import revive_state
 import watcher
+from support import isolate_state
 
 
 class MessageTests(unittest.TestCase):
@@ -23,6 +25,16 @@ class MessageTests(unittest.TestCase):
     def test_failed_revive_is_labelled(self):
         text = notify.revive_message("cmux", "codex", 3700, None, False)
         self.assertEqual(text, "Revive FAILED: Codex in cmux · offline 1h 1m")
+
+    def test_unknown_submission_is_not_reported_as_failure(self):
+        text = notify.revive_message("bb", "codex", 0, None, None)
+        self.assertEqual(text, "Resume status unknown: Codex in bb · offline 0s")
+
+    def test_unhandled_provider_error_keeps_its_message(self):
+        text = notify.revive_message(
+            "bb", "codex", 0, None, None, "at capacity", "unhandled_provider_error"
+        )
+        self.assertEqual(text, "Unhandled provider error: Codex in bb · at capacity")
 
     def test_provider_revive_includes_trigger_and_detail(self):
         text = notify.revive_message(
@@ -68,8 +80,129 @@ class MessageTests(unittest.TestCase):
         ):
             self.assertTrue(notify.send("hello", sleep=mock.Mock()))
 
+    def test_webhook_read_error_is_a_silent_noop(self):
+        webhook_file = mock.Mock()
+        webhook_file.is_file.return_value = True
+        webhook_file.read_text.side_effect = OSError("unreadable webhook")
+        with mock.patch.dict(notify.os.environ, {"DISCORD_WEBHOOK_URL": ""}), mock.patch.object(
+            notify, "WEBHOOK_FILE", webhook_file
+        ), mock.patch.object(notify, "post") as post:
+            self.assertFalse(notify.send("hello"))
+            self.assertFalse(notify.notify_revive("bb", "codex", 0, None, True))
+        post.assert_not_called()
+
+    def test_request_construction_error_never_raises(self):
+        with mock.patch.object(notify, "webhook_url", return_value="invalid webhook"), mock.patch(
+            "immortal.core.notify.urllib.request.urlopen"
+        ) as urlopen:
+            self.assertFalse(notify.send("hello", sleep=mock.Mock()))
+        urlopen.assert_not_called()
+
+    def test_unexpected_send_error_never_raises(self):
+        with mock.patch.object(notify, "webhook_url", side_effect=RuntimeError("webhook error")):
+            self.assertFalse(notify.send("hello"))
+            self.assertFalse(notify.notify_revive("bb", "codex", 0, None, True))
+
+
+class NotificationQueueTests(unittest.TestCase):
+    def wait_for_delivery(self):
+        drained = threading.Event()
+
+        def wait():
+            notify._notifications.join()
+            drained.set()
+
+        threading.Thread(target=wait, daemon=True).start()
+        self.assertTrue(drained.wait(3), "notification worker did not drain")
+
+    def test_no_webhook_does_not_start_worker(self):
+        with mock.patch.object(notify, "webhook_url", return_value=None), mock.patch.object(
+            notify.threading, "Thread"
+        ) as thread, mock.patch.object(notify, "post") as post:
+            self.assertFalse(notify.notify_revive("bb", "codex", 0, None, True))
+        thread.assert_not_called()
+        post.assert_not_called()
+
+    def test_slow_delivery_does_not_block_caller_and_queue_is_bounded(self):
+        entered, release, returned = threading.Event(), threading.Event(), threading.Event()
+        results, delivery_threads = [], set()
+
+        def blocked_post(*args):
+            delivery_threads.add(threading.get_ident())
+            entered.set()
+            release.wait(3)
+            return True
+
+        def caller():
+            results.append(notify.notify_revive("bb", "codex", 0, "first", True))
+            returned.set()
+
+        with mock.patch.object(notify, "webhook_url", return_value="https://example.invalid/hook"), mock.patch.object(
+            notify, "post", side_effect=blocked_post
+        ) as post:
+            thread = threading.Thread(target=caller, daemon=True)
+            thread.start()
+            try:
+                self.assertTrue(entered.wait(1), "delivery never reached the fake post")
+                self.assertTrue(returned.wait(0.1), "recovery caller waited for delivery")
+                self.assertEqual(results, [True])
+                for index in range(notify.MAX_PENDING_NOTIFICATIONS):
+                    self.assertTrue(notify.notify_revive("bb", "codex", 0, str(index), True))
+                self.assertFalse(notify.notify_revive("bb", "codex", 0, "overflow", True))
+                self.assertEqual(post.call_count, 1)
+            finally:
+                release.set()
+                thread.join(3)
+                self.wait_for_delivery()
+        self.assertEqual(post.call_count, notify.MAX_PENDING_NOTIFICATIONS + 1)
+        self.assertEqual(len(delivery_threads), 1)
+        self.assertNotIn(thread.ident, delivery_threads)
+        self.assertNotIn(threading.get_ident(), delivery_threads)
+
+    def test_delivery_failure_does_not_stop_worker(self):
+        with mock.patch.object(notify, "webhook_url", return_value="https://example.invalid/hook"), mock.patch.object(
+            notify, "post", side_effect=[RuntimeError("delivery failed"), True]
+        ) as post:
+            self.assertTrue(notify.notify_revive("bb", "codex", 0, "first", True))
+            self.assertTrue(notify.notify_revive("bb", "codex", 0, "second", True))
+            self.wait_for_delivery()
+        self.assertEqual(post.call_count, 2)
+
+    def test_retry_sleep_does_not_block_caller(self):
+        sleeping, release, returned = threading.Event(), threading.Event(), threading.Event()
+        results, sleep_threads = [], set()
+
+        def blocked_sleep(delay):
+            sleep_threads.add(threading.get_ident())
+            sleeping.set()
+            release.wait(3)
+
+        def caller():
+            results.append(notify.notify_revive("bb", "codex", 0, None, True))
+            returned.set()
+
+        with mock.patch.object(notify, "webhook_url", return_value="https://example.invalid/hook"), mock.patch.object(
+            notify, "post", side_effect=[False, True]
+        ) as post, mock.patch.object(notify.time, "sleep", side_effect=blocked_sleep) as sleep:
+            thread = threading.Thread(target=caller, daemon=True)
+            thread.start()
+            try:
+                self.assertTrue(sleeping.wait(1), "delivery never reached the retry delay")
+                self.assertTrue(returned.wait(0.1), "recovery caller waited for the retry delay")
+                self.assertEqual(results, [True])
+            finally:
+                release.set()
+                thread.join(3)
+                self.wait_for_delivery()
+        self.assertEqual(post.call_count, 2)
+        sleep.assert_called_once_with(notify.RETRY_DELAYS[0])
+        self.assertNotIn(thread.ident, sleep_threads)
+
 
 class WatcherWiringTests(unittest.TestCase):
+    def setUp(self):
+        isolate_state(self)
+
     def test_bb_revive_triggers_notification(self):
         target = {
             "ref": "thr_x", "id": "thr_x", "cwd": None, "title": "Essay",
@@ -79,7 +212,7 @@ class WatcherWiringTests(unittest.TestCase):
             host_bb, "list_targets", return_value=[target]
         ), mock.patch.object(host_bb, "read_screen", return_value=None), mock.patch.object(
             detect_bb, "evaluate", return_value=("resume", [], {})
-        ), mock.patch.object(host_bb, "resume", return_value=True), mock.patch.object(
+        ), mock.patch.object(host_bb, "resume", return_value="sent"), mock.patch.object(
             notify, "notify_revive", return_value=True
         ) as ping, mock.patch.object(
             host_bb, "available", return_value=True

@@ -41,7 +41,7 @@ class StateTests(unittest.TestCase):
         script = """
 import watcher
 watcher.probe = lambda: True
-watcher.ready.wait_for_apis = lambda: None
+watcher.revive.ready.check = lambda: False
 watcher.revive.revive_pass = lambda *args: 0
 watcher.revive.telemetry.heartbeat = lambda: None
 def no_retry(_):
@@ -80,7 +80,7 @@ watcher.loop()
         }
         self.path.write_text(json.dumps(state))
         loaded = logbook.load_state()
-        self.assertEqual(loaded["revived"], {"valid": valid, "seen": seen})
+        self.assertEqual(loaded["revived"], {"valid": valid, "seen": {**seen, "tries": 0}})
         self.assertFalse(revive_state.may_revive(loaded, "valid", "first"))
         self.assertFalse(revive_state.may_revive(loaded, "valid", "recheck"))
         self.assertTrue(revive_state.may_revive(loaded, "seen", "first"))

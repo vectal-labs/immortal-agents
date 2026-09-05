@@ -4,6 +4,9 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
+import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -12,8 +15,9 @@ from unittest import mock
 from immortal.detect import bb as detect_bb
 from immortal.detect import bb_provider as detect_bb_provider
 from immortal.hosts import bb as host_bb
+from immortal.core import bb_runtime
 import revive
-from immortal.core import revive_state
+from immortal.core import logbook, revive_state
 import watcher
 from immortal.core.common import now_iso, parse_ts
 
@@ -163,14 +167,70 @@ class ListFilterTests(unittest.TestCase):
 
 
 class ResumeTests(unittest.TestCase):
+    def setUp(self):
+        # Isolate HOME/state and give resume a real Node+bb pair to validate.
+        # Unisolated get_runtime() wrote ~/.immortal-agents/bb_runtime.json.
+        self._env = os.environ.copy()
+        self.tmp = tempfile.TemporaryDirectory()
+        root = Path(self.tmp.name)
+        state = root / "state"
+        state.mkdir()
+        node = root / "node"
+        bb = root / "bb"
+        node.write_text(
+            "#!/bin/sh\n"
+            'if [ "$1" = "-p" ] && [ "$2" = "process.execPath" ]; then echo "$0"; exit 0; fi\n'
+            'script="$1"; shift; exec /bin/bash "$script" "$@"\n'
+        )
+        bb.write_text("#!/usr/bin/env node\necho '[]'\nexit 0\n")
+        node.chmod(node.stat().st_mode | stat.S_IEXEC)
+        bb.chmod(bb.stat().st_mode | stat.S_IEXEC)
+        os.environ["WATCHER_STATE_DIR"] = str(state)
+        os.environ["HOME"] = str(root / "home")
+        (root / "home").mkdir()
+        os.environ["IMMORTAL_NODE"] = str(node)
+        os.environ["IMMORTAL_NODE_HINTS"] = ""
+        os.environ["BB_BIN"] = str(bb)
+        os.environ.pop("BB_CLI", None)
+        os.environ.pop("IMMORTAL_PLIST", None)
+
+    def tearDown(self):
+        for key in list(os.environ):
+            if key not in self._env:
+                os.environ.pop(key, None)
+        os.environ.update(self._env)
+        self.tmp.cleanup()
+
     def test_logs_stdout_tail(self):
-        proc = mock.Mock(returncode=0, stdout="sent", stderr="")
-        with mock.patch.object(host_bb.subprocess, "run", return_value=proc), mock.patch.object(
+        # Validate before patching: host_bb.subprocess is the stdlib module, so
+        # the mock replaces every subprocess.run, including Node discovery.
+        runtime = bb_runtime.get_runtime()
+        self.assertTrue(os.path.isfile(runtime["node"]))
+        self.assertTrue(os.path.isfile(runtime["bb"]))
+        value = thread("thr_x")
+        with mock.patch.object(host_bb, "_list_error_threads", return_value=[value]), mock.patch.object(
+            host_bb, "_thread_events", return_value=DEAD_EVENTS
+        ):
+            target = host_bb.list_targets()[0]
+        proc = mock.Mock(returncode=0, stdout='{"ok":true,"delivery":"sent"}', stderr="")
+
+        def run(runtime, args, **kwargs):
+            proc.args = bb_runtime.command_for(runtime, args)
+            return proc
+
+        def read(args):
+            if args[1] == "show":
+                return {"thread": value}
+            if args[1] == "log":
+                return DEAD_EVENTS
+            return []
+        with mock.patch.object(bb_runtime, "run_command", side_effect=run), mock.patch.object(
             host_bb, "log"
-        ) as log:
-            self.assertTrue(host_bb.resume("thr_x"))
+        ) as log, mock.patch.object(host_bb, "bb_json", side_effect=read):
+            self.assertEqual(host_bb.resume(target), "sent")
         self.assertEqual(log.call_args.args[0], "bb_result")
-        self.assertEqual(log.call_args.kwargs["stdout"], "sent")
+        self.assertEqual(log.call_args.kwargs["stdout"], proc.stdout)
+        self.assertEqual(log.call_args.kwargs["cmd"][:2], [runtime["node"], runtime["bb"]])
 
 
 # Pi on Grok 4.6 via OpenRouter, 2026-09-03. Three real failures in one day:
@@ -241,10 +301,15 @@ class ProviderOutageTests(unittest.TestCase):
 
 class ProviderCheckLoopTests(unittest.TestCase):
     def setUp(self):
+        self.tmp = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.enterContext(mock.patch.object(logbook, "STATE_DIR", self.tmp))
+        self.enterContext(mock.patch.object(logbook, "STATE_PATH", self.tmp / "state.json"))
+        self.enterContext(mock.patch.object(logbook, "LOG_PATH", self.tmp / "watcher.log"))
         self.enterContext(mock.patch.object(revive, "log"))
         self.enterContext(mock.patch.object(revive_state, "save_state"))
-        self.send = self.enterContext(mock.patch.object(revive.notify, "send", return_value=True))
-        self.resume = self.enterContext(mock.patch.object(host_bb, "resume", return_value=True))
+        self.enterContext(mock.patch.object(revive.ready, "check", return_value=True))
+        self.send = self.enterContext(mock.patch.object(revive.notify, "notify_revive", return_value=True))
+        self.resume = self.enterContext(mock.patch.object(host_bb, "resume", return_value="sent"))
         self.enterContext(mock.patch.object(host_bb, "available", return_value=True))
         self.dead, screen = detector_input(thread("thr_b2q9cmz7zb", provider="pi"), PI_CAPACITY_EVENTS)
         self.enterContext(mock.patch.object(host_bb, "list_targets", return_value=[self.dead]))
@@ -266,9 +331,9 @@ class ProviderCheckLoopTests(unittest.TestCase):
         self.resume.assert_not_called()
         self.run_at(state, 150)
         self.run_at(state, 200)
-        self.resume.assert_called_once_with("thr_b2q9cmz7zb")
+        self.resume.assert_called_once_with(self.dead)
         self.assertEqual(state["revived"]["bb:thr_b2q9cmz7zb:provider"]["tries"], 1)
-        self.assertIn("provider outage", self.send.call_args.args[0])
+        self.assertEqual(self.send.call_args.args[-1], "provider_outage")
 
     def test_caps_revives_per_thread(self):
         state = {"revived": {"bb:thr_b2q9cmz7zb:provider": {
@@ -276,6 +341,40 @@ class ProviderCheckLoopTests(unittest.TestCase):
         }}}
         self.run_at(state, 150)
         self.resume.assert_not_called()
+
+    def test_failed_provider_delivery_retries_after_restart_and_backoff(self):
+        state = {}
+        self.resume.return_value = 'not_sent'
+        self.run_at(state, 150)
+        logbook.save_state(state)
+        loaded = logbook.load_state()
+        self.run_at(loaded, 160)
+        self.assertEqual(self.resume.call_count, 1)
+        self.resume.return_value = 'sent'
+        self.run_at(loaded, 181)
+        self.assertEqual(self.resume.call_count, 2)
+        self.assertEqual(loaded['revived']['bb:thr_b2q9cmz7zb:provider']['delivery'], 'sent')
+        self.run_at(loaded, 250)
+        self.assertEqual(self.resume.call_count, 2)
+
+    def test_unknown_provider_delivery_is_observed_without_retry_after_restart(self):
+        state = {}
+        self.resume.return_value = 'unknown'
+        self.run_at(state, 150)
+        logbook.save_state(state)
+        loaded = logbook.load_state()
+        self.run_at(loaded, 250)
+        self.resume.assert_called_once()
+        self.assertTrue(loaded['pending_revives'])
+
+    def test_unready_provider_check_does_not_attempt_delivery(self):
+        state = {}
+        with mock.patch.object(revive.ready, 'check', return_value=False):
+            self.run_at(state, 150)
+        self.resume.assert_not_called()
+        self.assertFalse(state.get('revived'))
+        self.run_at(state, 181)
+        self.resume.assert_called_once()
 
     def test_unknown_error_is_announced_once_and_not_revived(self):
         state = {}
@@ -287,7 +386,7 @@ class ProviderCheckLoopTests(unittest.TestCase):
             self.run_at(state, 200)
         self.resume.assert_not_called()
         self.send.assert_called_once()
-        self.assertIn("Unhandled provider error", self.send.call_args.args[0])
+        self.assertEqual(self.send.call_args.args[-1], "unhandled_provider_error")
 
 
 # ADR 0048. Real death on 2026-09-03: Cursor (acp) in bb, Wi-Fi lost while a
@@ -390,6 +489,10 @@ class Cursor0015Tests(unittest.TestCase):
 
 class WatcherIntegrationTests(unittest.TestCase):
     def setUp(self):
+        self.tmp = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.enterContext(mock.patch.object(logbook, "STATE_DIR", self.tmp))
+        self.enterContext(mock.patch.object(logbook, "STATE_PATH", self.tmp / "state.json"))
+        self.enterContext(mock.patch.object(logbook, "LOG_PATH", self.tmp / "watcher.log"))
         # A revive posts to Discord; tests must never hit the real webhook.
         self.enterContext(mock.patch.object(revive.notify, "notify_revive", return_value=False))
 
@@ -404,7 +507,7 @@ class WatcherIntegrationTests(unittest.TestCase):
         ), mock.patch.object(
             host_bb, "read_screen", return_value=detector_input(thread("thr_jg3yv6kthc"), DEAD_EVENTS)[1]
         ), mock.patch.object(
-            host_bb, "resume", return_value=True
+            host_bb, "resume", return_value="sent"
         ) as resume, mock.patch.object(
             host_bb, "available", return_value=True
         ), mock.patch.object(
@@ -412,7 +515,7 @@ class WatcherIntegrationTests(unittest.TestCase):
         ):
             revive.revive_pass(state, (loss, recovery), "first")
             revive.revive_pass(state, (loss, recovery), "first")
-        resume.assert_called_once_with("thr_jg3yv6kthc")
+        resume.assert_called_once_with(detector_input(thread("thr_jg3yv6kthc"), DEAD_EVENTS)[0])
         self.assertIn(f"bb:thr_jg3yv6kthc:{loss}", state["revived"])
 
     def test_bb_unavailable_is_logged_not_fatal(self):

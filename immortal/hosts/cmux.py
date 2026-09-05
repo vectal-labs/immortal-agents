@@ -1,11 +1,11 @@
 """cmux host and the shared host/detector contracts.
 
 Every host_*.py exposes NAME, DETECTOR, available(), list_targets(),
-read_screen(ref), and resume(ref). DETECTOR is None to detect from screen text,
+read_screen(ref), and resume(target). DETECTOR is None to detect from screen text,
 or a detector NAME for a host with one target type. available() never launches
 an app. list_targets() returns dicts with ref, id, cwd, title, and harness_hint;
 a host may add detector metadata such as bb's error_at. read_screen() returns
-text or None. resume() returns True only when "keep going" was delivered.
+text or None. resume() returns sent, queued, not_sent, unknown, or superseded; unknown must not be blindly retried.
 
 Every detect_*.py exposes NAME, is_pane(screen), classify_pane(screen), and
 evaluate(target, screen, window). window is a (loss_at, recovery_at) pair of
@@ -101,9 +101,19 @@ def read_screen(ref):
     return screen
 
 
-def resume(ref):
-    ok = cmux_run(["send-key", "--surface", ref, "esc"])
+def resume(target):
+    ref = target["ref"]
+    try:
+        if not cmux_run(["send-key", "--surface", ref, "esc"]):
+            return "not_sent"
+    except (OSError, subprocess.TimeoutExpired):
+        return "not_sent"  # No resume text was attempted.
     time.sleep(0.3)
-    ok = cmux_run(["send", "--surface", ref, RESUME_TEXT]) and ok
-    ok = cmux_run(["send-key", "--surface", ref, "enter"]) and ok
-    return ok
+    try:
+        if not cmux_run(["send", "--surface", ref, RESUME_TEXT]):
+            return "unknown"
+        if not cmux_run(["send-key", "--surface", ref, "enter"]):
+            return "unknown"
+    except (OSError, subprocess.TimeoutExpired):
+        return "unknown"
+    return "sent"

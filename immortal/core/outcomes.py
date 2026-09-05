@@ -6,9 +6,9 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from immortal.core import telemetry
+from immortal.core import telemetry, notify
 from immortal.core.common import now_iso, parse_ts
-from immortal.core.logbook import log
+from immortal.core.logbook import log, save_state
 
 OBSERVE_SECS = 600
 
@@ -33,6 +33,10 @@ def track(state, host, ref, harness, info, bb_events=None):
         if len(sessions) == 1:
             path = sessions[0].get("path")
     attempt = {"host": host, "ref": ref, "harness": harness, "sent_at": sent_at}
+    if info.get("bb_retry"):
+        attempt["bb_retry"] = info["bb_retry"]
+    if info.get("bb_interruption"):
+        attempt["bb_interruption"] = info["bb_interruption"]
     if path:
         try:
             stat = Path(path).stat()
@@ -85,8 +89,22 @@ def _assistant_output(harness, row):
 def _output_at(attempt, bb_events):
     since = parse_ts(attempt["sent_at"])
     if attempt["host"] == "bb":
+        retry = attempt.get("bb_retry")
+        matched = not retry
+        turn_id = None
         for row in bb_events(attempt["ref"]):
+            data = row.get("data") or {}
+            if retry and row.get("type") == "client/turn/requested":
+                matched = (data.get("retryOfRequestId") == retry["original_request_id"]
+                           and data.get("retryAttempt") == retry["attempt"])
+                turn_id = None
+            if retry and matched and row.get("type") == "turn/started":
+                turn_id = (row.get("scope") or {}).get("turnId")
+            if not matched:
+                continue
             if row.get("type") != "item/completed":
+                continue
+            if retry and (not turn_id or (row.get("scope") or {}).get("turnId") != turn_id):
                 continue
             stamp = row.get("createdAt")
             if not isinstance(stamp, (int, float)):
@@ -125,6 +143,11 @@ def _finish(state, attempt_id, attempt, at, reason, now):
     log(event, **fields)
     telemetry.send(event, **fields)
     cancel(state, attempt_id)
+    if attempt.get("bb_interruption"):
+        save_state(state)
+        notify.notify_revive("bb", attempt.get("harness"), 0, attempt["bb_interruption"]["label"], bool(at),
+                             detail=fields["reason"], trigger=("bb_daemon_recovery_confirmed" if at
+                                                              else "bb_daemon_recovery_unconfirmed"))
 
 
 def check(state, bb_events, now=None):

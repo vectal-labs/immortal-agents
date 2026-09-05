@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import timezone
 from pathlib import Path
 
@@ -39,7 +40,12 @@ SKIP_USER_CONTENT = {"tool_result"}
 def encode_cwd(cwd):
     if not cwd:
         return []
-    return [path.replace("/", "-") for path in cwd_variants(cwd)]
+    names = []
+    for path in sorted(cwd_variants(cwd)):
+        # Claude also replaces punctuation (including dots and underscores).
+        # Retain the previous spelling for older session directories.
+        names.extend((re.sub(r"[^a-zA-Z0-9-]", "-", path), path.replace("/", "-")))
+    return list(dict.fromkeys(names))
 
 
 def jsonl_candidates(cwd):

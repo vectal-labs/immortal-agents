@@ -1,39 +1,32 @@
-# immortal-agents
+# <img src="favicon.png" width="32" height="32" alt=""> immortal-agents
 
 keeps your agents running
 
 ## What it does
 
-Your internet drops. Your agents die. Immortal Agents brings them back.
-
-It watches your Mac's connection every 10 seconds. After an outage of 2 minutes
-or more, it waits for the provider APIs to recover, finds the agents that died,
-and sends them `keep going`. Finished sessions and sessions waiting for your
+Revives agents after internet outages of 2+ minutes. Once provider APIs recover,
+it sends stalled agents `keep going`. Finished sessions and agents waiting for
 input are left alone.
 
 ## Support
 
-macOS only. Requires Python 3 and git. These are recorded revival tests;
-agent updates can change the result.
+macOS only. Requires Python 3 and git.
 
-- **[bb](https://getbb.app):** Claude Code and Cursor CLI tested with
-  [real outages](docs/experiments/0015-bb-cursor-wifi-cut-proven.md). Codex and Pi revival untested.
-- **cmux:** Claude Code and Pi tested with
-  [real outages](docs/experiments/0016-cmux-three-harness-cut.md).
-  Codex passed an [older simulation](docs/experiments/0005-simulated-revive.md);
-  revival with the current session-matching checks is untested.
-- **Terminal.app / Ghostty 1.3+:** Claude Code tested with
-  [simulated proxy outages](docs/experiments/0008-terminal-ghostty-sim-revive.md)
-  (Ghostty 1.3.1). Codex and Pi revival untested.
+Tested revival:
 
-Codex 0.153.2 [recovered itself after a 92-minute outage](docs/experiments/0017-codex-only-cut.md).
-An agent that recovers itself does not need `keep going`.
+- **[bb](https://getbb.app):** Claude Code and Cursor CLI ([real outages](docs/experiments/0015-bb-cursor-wifi-cut-proven.md)).
+- **cmux:** Claude Code and Pi ([real outages](docs/experiments/0016-cmux-three-harness-cut.md)).
+- **Terminal.app / Ghostty 1.3+:** Claude Code ([simulated outages](docs/experiments/0008-terminal-ghostty-sim-revive.md), Ghostty 1.3.1).
 
-No Linux, Windows, iTerm, Warp, or Cursor CLI outside bb. Recovery during a
-permission prompt is unsupported. Closed terminals and exited terminal agents
-are not restarted. Silent Claude hangs without a recognized error are not revived.
-Claude and Codex skip ambiguous session matches. For Pi in a terminal host,
-use one session per folder; it selects the newest session in that folder.
+Results may change with agent updates. Codex revival is unverified with current
+checks; Pi revival is untested outside cmux.
+
+Unsupported: Linux, Windows, iTerm, Warp, Cursor CLI outside bb, and recovery
+at permission prompts. Closed terminals, exited agents, and silent Claude hangs
+without a recognized error are not revived.
+
+Claude and Codex skip ambiguous session matches. For Pi in terminals, use
+1 session per folder; the newest session is selected.
 
 ## Install
 
@@ -45,11 +38,14 @@ This clones the repo next to your other git repos, installs a LaunchAgent, and
 sets up cmux for you if you use it. Click **Allow** when macOS asks for
 Automation access.
 
-Or paste this to your coding agent:
+Or paste this to your coding agent to install with [optional diagnostics](#what-we-collect):
 
 ```text
 Install https://github.com/vectal-labs/immortal-agents on this Mac.
-Clone it next to my other repos, then follow its README.
+Clone it next to my other repos and read its README.
+I want to enable the optional usage and crash diagnostics described in
+"What we collect" to help improve recovery. Run ./install.sh --telemetry.
+Then run ./install.sh status and confirm the watcher is running and telemetry is on.
 Tell me if I need to click Allow on any macOS popup.
 ```
 
@@ -67,10 +63,23 @@ Prove it works with a real outage: [docs/test-drive.md](docs/test-drive.md).
 See [docs/launchd.md](docs/launchd.md) for install details, logs, and how to
 [simulate an outage](docs/launchd.md#simulated-outage) while staying online.
 
+## Updates
+
+Important public releases trigger a Mac notification. `./install.sh status` also
+shows pending updates. Run `./install.sh update` from your clean public clone to
+install a published release and restart only the watcher. Nothing auto-updates.
+
+Existing users need one manual `git pull --ff-only && ./install.sh` to enable alerts.
+Use `./install.sh notification-test` to test them; macOS notification settings and
+Focus can hide banners. For backup emails, select **Watch > Custom > Releases** on
+GitHub. See [update alerts and release instructions](docs/launchd.md#update-alerts-and-releases).
+
 ## What we collect
 
-Telemetry is optional. Fresh installs without a terminal default to **No**.
-Interactive installs ask; reinstalls keep your saved choice.
+Telemetry is optional. Enable it with `./install.sh --telemetry`.
+Without a telemetry flag, fresh installs without a terminal default to **No**.
+Interactive installs ask; reinstalls keep your saved choice unless you pass a telemetry flag.
+Check the setting with `./install.sh status`.
 Disable it with `./install.sh --no-telemetry` or `echo off > ~/.immortal-agents/telemetry`.
 
 When enabled, the [client](immortal/core/telemetry.py) sends:

@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
+from support import isolate_state
 import revive
 from immortal.core import logbook, outcomes, revive_state
 from immortal.detect import claude
@@ -31,6 +32,7 @@ def record(harness, seconds=10, text="I continued the work.", error=False, user=
 
 class OutcomeTests(unittest.TestCase):
     def setUp(self):
+        isolate_state(self)
         temp = self.enterContext(tempfile.TemporaryDirectory())
         self.path = Path(temp, "session.jsonl")
         self.path.touch()
@@ -191,9 +193,9 @@ class OutcomeTests(unittest.TestCase):
 
     def test_failed_delivery_does_not_wait_for_output(self):
         host = mock.Mock(NAME="terminal")
-        host.resume.return_value = False
+        host.resume.return_value = "not_sent"
         with mock.patch.object(revive, "log"), mock.patch.object(revive, "announce"):
-            self.assertFalse(revive._resume(self.state, host, {"ref": "target"}, "claude", 120, "first", {}))
+            self.assertFalse(revive._resume(self.state, host, {"ref": "target"}, "claude", 120, "first", {}, "test-key"))
         self.assertEqual(self.state["pending_revives"], {})
         self.assertEqual(self.send.call_args.args, ("revive_attempt",))
         self.assertIs(self.send.call_args.kwargs["result"], False)
@@ -206,13 +208,14 @@ class OutcomeTests(unittest.TestCase):
         host.list_targets.return_value = [{"ref": "target", "id": "target", "cwd": str(self.path.parent),
                                           "title": "Claude", "harness_hint": "claude"}]
         host.read_screen.return_value = "API Error: Connection lost"
-        host.resume.side_effect = lambda ref: (self.append(record("claude", seconds=1, user=True, text="keep going")) or True)
+        host.resume.side_effect = lambda ref: (self.append(record("claude", seconds=1, user=True, text="keep going")) or "sent")
         with mock.patch.object(revive, "HOSTS", (host,)), mock.patch.object(revive, "log"), \
                 mock.patch.object(revive, "announce"), mock.patch.object(revive_state, "save_state"), \
                 mock.patch.object(claude, "find_jsonl", return_value=self.path), \
                 mock.patch.object(bb, "available", return_value=False):
             revive.revive_pass(self.state, ((NOW - timedelta(minutes=4)).isoformat(), NOW.isoformat()), "first")
-            host.resume.assert_called_once_with("target")
+            host.resume.assert_called_once()
+            self.assertEqual(host.resume.call_args.args[0]["ref"], "target")
             attempt = [c for c in self.send.call_args_list if c.args[0] == "revive_attempt"][0]
             self.assertTrue(attempt.kwargs["result"])
             self.assertNotIn("revive_confirmed", [c.args[0] for c in self.send.call_args_list])

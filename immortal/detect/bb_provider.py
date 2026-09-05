@@ -37,7 +37,7 @@ def evaluate(target, screen, window):
     if status != "error":
         return "skip", reasons + ["not_error_status"], info
     if screen is None or not error_at or not now:
-        return "skip", reasons + ["no_provider_error"], info
+        return "unknown", reasons + ["no_provider_error"], info
     if is_network_error(screen):
         return "skip", reasons + ["network_error_belongs_to_outage_path"], info
     if not is_provider_outage(screen):

@@ -1,0 +1,74 @@
+[
+  {
+    "scope": {
+      "kind": "thread"
+    },
+    "threadId": "thr_rx3pebr6j2",
+    "seq": 257,
+    "createdAt": 1788605450196,
+    "type": "client/turn/requested",
+    "data": {
+      "direction": "outbound",
+      "requestId": "creq_x49j9b62ab",
+      "source": "tell",
+      "initiator": "user",
+      "senderThreadId": null,
+      "systemMessageKind": "unlabeled",
+      "systemMessageSubject": null,
+      "input": [
+        {
+          "type": "text",
+          "text": "remove it now",
+          "mentions": []
+        }
+      ],
+      "target": {
+        "kind": "new-turn"
+      },
+      "request": {
+        "method": "turn/start",
+        "params": {}
+      }
+    }
+  },
+  {
+    "scope": {
+      "kind": "thread"
+    },
+    "threadId": "thr_rx3pebr6j2",
+    "seq": 258,
+    "createdAt": 1788605450319,
+    "type": "thread/identity",
+    "data": {
+      "providerThreadId": "01a06ee0-c7f6-7af2-8f25-b9cf2f49219a"
+    }
+  },
+  {
+    "scope": {
+      "kind": "thread"
+    },
+    "threadId": "thr_rx3pebr6j2",
+    "seq": 259,
+    "createdAt": 1788605480221,
+    "type": "client/turn/rejected",
+    "data": {
+      "requestId": "creq_x49j9b62ab",
+      "reason": "command_failed",
+      "message": "JSON-RPC request timed out: thread/resume"
+    }
+  },
+  {
+    "scope": {
+      "kind": "thread"
+    },
+    "threadId": "thr_rx3pebr6j2",
+    "seq": 260,
+    "createdAt": 1788605480222,
+    "type": "system/error",
+    "data": {
+      "code": "thread_command_failed",
+      "message": "Command turn.submit failed",
+      "detail": "JSON-RPC request timed out: thread/resume"
+    }
+  }
+]

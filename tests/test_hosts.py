@@ -4,12 +4,14 @@
 from __future__ import annotations
 
 import unittest
+import subprocess
 from datetime import datetime, timedelta, timezone
 from unittest import mock
 
 from immortal.detect import claude as detect_claude
 from immortal.detect import codex as detect_codex
 from immortal.hosts import bb as host_bb
+from immortal.hosts import cmux as host_cmux
 from immortal.hosts import ghostty as host_ghostty
 from immortal.hosts import terminal as host_terminal
 from immortal.core import osa
@@ -17,6 +19,8 @@ from immortal.core import procs
 import revive
 from immortal.core import revive_state
 import watcher
+from support import isolate_state
+from immortal.core import ready
 
 NOW = datetime(2026, 9, 2, 10, 0, tzinfo=timezone.utc)
 
@@ -130,12 +134,15 @@ class FakeHost:
     def read_screen(self, ref):
         return self.screen
 
-    def resume(self, ref):
-        self.resumed.append(ref)
-        return True
+    def resume(self, target):
+        self.resumed.append(target["ref"])
+        return "sent"
 
 
 class HostLoopTests(unittest.TestCase):
+    def setUp(self):
+        isolate_state(self)
+
     def test_ghostty_style_host_revives_dead_claude_once(self):
         host = FakeHost([{"ref": "T1", "id": "T1", "cwd": "/p", "title": "claude", "harness_hint": "claude"}])
         info = {"path": "/x.jsonl", "last_activity": iso(NOW), "api_error": True, "stale_error": False,
@@ -162,11 +169,13 @@ class HostLoopTests(unittest.TestCase):
 
     def test_on_recovery_skips_hosts_that_are_not_running(self):
         with mock.patch.object(watcher, "log"), mock.patch.object(revive, "log") as log, mock.patch.object(
-            watcher.ready, "wait_for_apis"
+            ready, "check", return_value=True
         ), mock.patch.object(host_bb, "available", return_value=False):
             for host in (candidate for candidate in revive.HOSTS if candidate is not host_bb):
                 self.enterContext(mock.patch.object(host, "available", return_value=False))
-            watcher.on_recovery({"revived": {}}, iso(NOW), iso(NOW), 300)
+            state = {"revived": {}}
+            watcher.on_recovery(state, iso(NOW), iso(NOW), 300)
+            revive.run_recheck(state)
         skipped = [c.kwargs.get("host") for c in log.call_args_list if c.args[0] == "host_skipped"]
         self.assertEqual(sorted(skipped), ["bb", "cmux", "ghostty", "terminal"])
 
@@ -189,7 +198,7 @@ class TerminalHostTests(unittest.TestCase):
 
     def test_resume_types_keep_going_into_the_tab(self):
         with mock.patch.object(osa, "run_jxa", return_value="ok") as run:
-            self.assertTrue(host_terminal.resume("/dev/ttys003"))
+            self.assertEqual(host_terminal.resume({"ref": "/dev/ttys003"}), "sent")
         script = run.call_args.args[0]
         self.assertIn('"/dev/ttys003"', script)
         self.assertIn('doScript("keep going"', script)
@@ -222,11 +231,43 @@ class GhosttyHostTests(unittest.TestCase):
 
     def test_resume_sends_escape_text_enter(self):
         with mock.patch.object(osa, "run_jxa", return_value="ok") as run:
-            self.assertTrue(host_ghostty.resume("A"))
+            self.assertEqual(host_ghostty.resume({"ref": "A"}), "sent")
         script = run.call_args.args[0]
         self.assertIn('sendKey("escape"', script)
         self.assertIn('inputText("keep going"', script)
         self.assertIn('sendKey("enter"', script)
+
+
+class DeliveryFailureTests(unittest.TestCase):
+    def test_cmux_failure_before_text_is_safe_to_retry(self):
+        for failure in (False, subprocess.TimeoutExpired('cmux', 20)):
+            with self.subTest(failure=type(failure).__name__), mock.patch.object(
+                host_cmux, 'cmux_run', side_effect=[failure]
+            ) as command:
+                self.assertEqual(host_cmux.resume({'ref':'surface:1'}), 'not_sent')
+                self.assertEqual(command.call_count, 1)
+
+    def test_cmux_text_failure_never_presses_enter_or_retries_blindly(self):
+        for failure in (False, subprocess.TimeoutExpired('cmux', 20)):
+            with self.subTest(failure=type(failure).__name__), mock.patch.object(
+                host_cmux, 'cmux_run', side_effect=[True, failure]
+            ) as command, mock.patch.object(host_cmux.time, 'sleep'):
+                self.assertEqual(host_cmux.resume({'ref':'surface:1'}), 'unknown')
+                self.assertEqual(command.call_count, 2)
+
+    def test_cmux_enter_failure_keeps_delivery_unknown(self):
+        with mock.patch.object(host_cmux, 'cmux_run', side_effect=[True, True, False]), \
+             mock.patch.object(host_cmux.time, 'sleep'):
+            self.assertEqual(host_cmux.resume({'ref':'surface:1'}), 'unknown')
+
+    def test_automation_timeout_is_unknown_but_missing_executable_is_not_sent(self):
+        for host in (host_terminal, host_ghostty):
+            for failure, delivery in ((subprocess.TimeoutExpired('osascript', 20), 'unknown'),
+                                      (FileNotFoundError('osascript missing'), 'not_sent')):
+                with self.subTest(host=host.NAME, delivery=delivery), \
+                     mock.patch.object(osa, 'run_jxa', side_effect=failure), \
+                     mock.patch.object(host, 'log'):
+                    self.assertEqual(host.resume({'ref':'test'}), delivery)
 
 
 if __name__ == "__main__":

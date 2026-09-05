@@ -87,10 +87,15 @@ def read_screen(ref):
     return None
 
 
-def resume(ref):
+def resume(target):
+    ref = target["ref"]
     try:
         osa.run_jxa(RESUME_JS % {"id": osa.js(ref), "text": osa.js(RESUME_TEXT)})
     except (osa.OsaError, subprocess.TimeoutExpired) as exc:
         log("resume_error", host=NAME, ref=ref, error=str(exc))
-        return False
-    return True
+        return "unknown"
+    except (FileNotFoundError, PermissionError):
+        return "not_sent"
+    except OSError:
+        return "unknown"
+    return "sent"
