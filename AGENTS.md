@@ -12,6 +12,7 @@
 # PROJECT RULES
 - this is a quick and dirty prototype; do not over-engineer or bloat it
 - other agents/humans work here; never undo changes you did not make
+- public `origin` has separate, clean history; never merge/push old private-history branches into it. Transfer reviewed changes as patches. `backup/private-main-20260905` preserves the old local history and must not be pushed.
 - never create new ADRs without David's explicit approval
 - if the next action is obvious & safe, just do it
 - verify yourself, never ask: `python3 -m unittest discover -s tests`
