@@ -1,16 +1,12 @@
 """Observe assistant output after a resume; sending input alone is not recovery."""
 
-import json
-import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from immortal.core import telemetry, notify, discord_outbox
+from immortal.core import telemetry, notify, discord_outbox, recovery_events
 from immortal.core.common import now_iso, parse_ts
 from immortal.core.logbook import log, save_state
-
-OBSERVE_SECS = 600
 
 
 def track(state, host, ref, harness, info, bb_events=None):
@@ -21,11 +17,12 @@ def track(state, host, ref, harness, info, bb_events=None):
         if (isinstance(previous, dict) and parse_ts(previous.get("sent_at"))
                 and previous.get("host") == host and previous.get("ref") == ref):
             # Rechecks can retry before the next scheduled observation tick.
+            observed = dict(previous)
             try:
-                at = _output_at(previous, bb_events)
+                at = _output_at(observed, bb_events)
             except Exception:
                 at = None
-            _finish(state, attempt_id, previous, at, "retried", parse_ts(sent_at))
+            complete(state, attempt_id, observed, at, "retried", parse_ts(sent_at))
     info = info or {}
     path = info.get("path")
     if not path:
@@ -34,15 +31,27 @@ def track(state, host, ref, harness, info, bb_events=None):
             path = sessions[0].get("path")
     attempt = {"host": host, "ref": ref, "harness": harness, "sent_at": sent_at}
     attempt["label"] = info.get("label") or ref
-    attempt["discord_enabled"] = bool(notify.webhook_url())
     if info.get("bb_retry"):
         attempt["bb_retry"] = info["bb_retry"]
     if info.get("bb_interruption"):
         attempt["bb_interruption"] = info["bb_interruption"]
+    if host == "bb" and bb_events:
+        try:
+            events = bb_events(ref)
+            attempt["bb_after_seq"] = max((row.get("seq", 0) for row in events
+                if isinstance(row, dict) and type(row.get("seq")) is int), default=0)
+            for row in events:
+                if isinstance(row, dict) and row.get("type") == "thread/identity":
+                    session_id = recovery_events.obj(row.get("data")).get("providerThreadId")
+                    if isinstance(session_id, str):
+                        attempt["provider_session_id"] = session_id
+        except Exception:
+            pass
     if path:
+        attempt.update(path=str(path), offset=0)
         try:
             stat = Path(path).stat()
-            attempt.update(path=str(path), offset=stat.st_size, inode=stat.st_ino)
+            attempt.update(offset=stat.st_size, inode=stat.st_ino)
         except OSError:
             pass
     attempt_id = uuid.uuid4().hex
@@ -56,7 +65,7 @@ def cancel(state, attempt_id):
 
 def _has_text(content):
     if isinstance(content, str):
-        return bool(content.strip()) and not content.lstrip().lower().startswith("error:")
+        return bool(content.strip()) and not content.lstrip().lower().startswith(("error:", "api error:"))
     if isinstance(content, list):
         return any(isinstance(item, dict) and (
             item.get("type") in ("tool_use", "toolCall")
@@ -67,7 +76,7 @@ def _has_text(content):
 
 def _assistant_output(harness, row):
     message = row.get("message") or {}
-    if harness == "claude":
+    if harness in ("claude", "claude-code"):
         return (row.get("type") == "assistant" and not row.get("isApiErrorMessage")
                 and isinstance(message, dict) and _has_text(message.get("content")))
     if harness == "pi":
@@ -89,91 +98,94 @@ def _assistant_output(harness, row):
 
 
 def _output_at(attempt, bb_events):
-    since = parse_ts(attempt["sent_at"])
+    attempt.pop("finished_reason", None)
     if attempt["host"] == "bb":
-        retry = attempt.get("bb_retry")
-        matched = not retry
-        turn_id = None
-        for row in bb_events(attempt["ref"]):
-            data = row.get("data") or {}
-            if retry and row.get("type") == "client/turn/requested":
-                matched = (data.get("retryOfRequestId") == retry["original_request_id"]
-                           and data.get("retryAttempt") == retry["attempt"])
-                turn_id = None
-            if retry and matched and row.get("type") == "turn/started":
-                turn_id = (row.get("scope") or {}).get("turnId")
-            if not matched:
-                continue
-            if row.get("type") != "item/completed":
-                continue
-            if retry and (not turn_id or (row.get("scope") or {}).get("turnId") != turn_id):
-                continue
-            stamp = row.get("createdAt")
-            if not isinstance(stamp, (int, float)):
-                continue
-            at = datetime.fromtimestamp(stamp / 1000, timezone.utc)
-            item = (row.get("data") or {}).get("item") or {}
-            if (0 < (at - since).total_seconds() <= OBSERVE_SECS
-                    and item.get("type") == "agentMessage" and _has_text(item.get("text"))):
-                return at
-    elif attempt.get("path"):
-        with Path(attempt["path"]).open("rb") as fh:
-            # A replaced/truncated file belongs to a different observation.
-            stat = os.fstat(fh.fileno())
-            if stat.st_ino != attempt["inode"] or stat.st_size < attempt["offset"]:
-                return None
-            fh.seek(attempt["offset"])
-            for line in fh:
-                try:
-                    row = json.loads(line)
-                except (ValueError, UnicodeError):
-                    continue
-                if not isinstance(row, dict):
-                    continue
-                at = parse_ts(row.get("timestamp"))
-                if (at and 0 < (at - since).total_seconds() <= OBSERVE_SECS
-                        and _assistant_output(attempt["harness"], row)):
-                    return at
+        return recovery_events.bb_output(attempt, bb_events(attempt["ref"]), _has_text)
+    if attempt.get("path"):
+        return recovery_events.cli_output(attempt, _assistant_output)
+    attempt["finished_reason"] = "no_session_log"
     return None
 
 
-def _finish(state, attempt_id, attempt, at, reason, now):
-    event = "revive_confirmed" if at else "revive_unconfirmed"
+def stage_complete(state, attempt_id, attempt, at, reason, now):
+    """Stage one outcome inside the caller's atomic recovery-state transaction."""
     fields = dict(attempt_id=attempt_id, host=attempt.get("host"), harness=attempt.get("harness"),
                   reason="assistant_output" if at else reason,
                   elapsed_secs=round(((at or now) - parse_ts(attempt["sent_at"])).total_seconds(), 1))
-    if at and (attempt.get("discord_enabled") or notify.webhook_url()):
+    duplicate = False
+    if at:
+        since = parse_ts(attempt.get("accepted_at") or attempt["sent_at"])
+        for receipt in state.get("recovery_confirmations", {}).values():
+            if receipt.get("source") != "native":
+                continue
+            same_session = (bool(attempt.get("provider_session_id"))
+                            and attempt["provider_session_id"] == receipt.get("provider_session_id")
+                            or bool(attempt.get("path")) and attempt["path"] == receipt.get("path"))
+            native_turn = attempt.get("provider_turn_id") if attempt.get("host") == "bb" else attempt.get("turn_id")
+            same_turn = (native_turn == receipt.get("turn_id") if native_turn else
+                         attempt.get("host") == "bb" and bool(attempt.get("accepted_at")))
+            started = parse_ts(receipt.get("sent_at"))
+            if same_session and same_turn and started and since <= started <= at:
+                duplicate = True
+                break
+    if at and not duplicate:
         discord_outbox.stage(state, attempt_id, attempt.get("host"), attempt.get("harness"),
-                             attempt.get("label") or attempt.get("bb_interruption", {}).get("label")
-                             or attempt.get("ref"))
+                             attempt.get("label") or attempt.get("ref"))
+    if (at and attempt.get("harness") == "codex"
+            and attempt_id in state.get("pending_revives", {})
+            and (attempt.get("path") or attempt.get("provider_session_id"))):
+        # Native warnings can reach SQLite after the watcher already observed progress.
+        state.setdefault("recovery_confirmations", {})[attempt_id] = {
+            key: attempt[key] for key in ("host", "path", "provider_session_id", "turn_id", "provider_turn_id",
+                                         "accepted_at", "sent_at") if key in attempt}
+        state["recovery_confirmations"][attempt_id]["confirmed_at"] = at.isoformat()
     cancel(state, attempt_id)
-    save_state(state)
-    log(event, **fields)
+    return None if duplicate else fields
+
+
+def complete(state, attempt_id, attempt, at, reason, now, changes=None):
+    """Save before clearing the live observation, even when the disk write fails."""
+    updated = {**state, **(changes or {})}
+    updated["pending_revives"] = dict(updated.get("pending_revives", {}))
+    updated["discord_outbox"] = dict(updated.get("discord_outbox", {}))
+    updated["recovery_confirmations"] = dict(updated.get("recovery_confirmations", {}))
+    fields = stage_complete(updated, attempt_id, attempt, at, reason, now)
+    save_state(updated)
+    state.update(updated)
+    if fields is None:
+        return
+    event = "revive_confirmed" if at else "revive_unconfirmed"
+    try:
+        log(event, **fields)
+    except OSError:
+        pass
     telemetry.send(event, **fields)
     if not at and attempt.get("bb_interruption"):
-        notify.notify_revive("bb", attempt.get("harness"), 0, attempt["bb_interruption"]["label"], bool(at),
+        notify.notify_revive("bb", attempt.get("harness"), 0, attempt["bb_interruption"]["label"], False,
                              detail=fields["reason"], trigger="bb_daemon_recovery_unconfirmed")
 
 
 def check(state, bb_events, now=None):
-    """Called on online ticks. Observation failure never prevents recovery."""
+    """Missing output or unavailable logs remain pending, including after restart."""
     now = now or datetime.now(timezone.utc)
     pending = state.get("pending_revives", {})
     if not isinstance(pending, dict):
         state["pending_revives"] = {}
         return
-    for attempt_id, attempt in list(pending.items()):
-        if not isinstance(attempt, dict) or not parse_ts(attempt.get("sent_at")):
+    for attempt_id, previous in list(pending.items()):
+        if not isinstance(previous, dict) or not parse_ts(previous.get("sent_at")):
             pending.pop(attempt_id, None)
             continue
-        at = None
-        reason = "no_output_observed"
+        attempt = dict(previous)
         try:
             at = _output_at(attempt, bb_events)
+            attempt.pop("observation_error", None)
         except Exception:
-            reason = "observation_unavailable"
-        since = parse_ts(attempt["sent_at"])
-        observable = attempt.get("host") == "bb" or bool(attempt.get("path"))
-        if not at and observable and (now - since).total_seconds() < OBSERVE_SECS:
-            continue
-        _finish(state, attempt_id, attempt, at, reason if observable else "no_session_log", now)
+            at = None
+            attempt["observation_error"] = "observation_unavailable"
+        if at or attempt.get("finished_reason"):
+            complete(state, attempt_id, attempt, at, attempt.get("finished_reason"), now)
+        elif attempt != previous:
+            updated = {**state, "pending_revives": {**state["pending_revives"], attempt_id: attempt}}
+            save_state(updated)
+            state.update(updated)

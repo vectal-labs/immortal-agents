@@ -41,16 +41,20 @@ Local logs distinguish `endpoint_probe` results and `endpoint_unknown` /
 `endpoint_unreachable` waiting decisions. Endpoint logs include only the host,
 status, and fixed reason; configuration and credentials are not logged.
 
-After delivery, the watcher checks for new assistant output in the same session
-every 30 seconds, including while Apple's check fails, for up to 10 minutes:
+After delivery, the watcher checks for new assistant output or tool activity in
+the same session every 30 seconds, including while Apple's check fails. There is
+no time limit. Pending observations survive restarts and temporarily unavailable logs:
 
 - `revive_confirmed`: new assistant output was observed after the prompt.
-- `revive_unconfirmed`: no output was observed, the session could not be read,
-  or another retry replaced the attempt. This does not prove recovery failed.
+- `revive_unconfirmed`: the matched turn ended without progress, the session was
+  replaced, another retry superseded the attempt, or no session log was identifiable.
 
-New assistant text or tool calls count as output. User input, old output,
-tool results alone, and recognized error messages do not confirm recovery.
-Pending checks survive watcher restarts. Checks never send another prompt.
+BB matches the retry request or resume input to its accepted turn. Queued follow-ups
+do not supersede a running recovery; different accepted input does. New assistant
+text or tool activity counts as output. User input, old output, tool results alone,
+and recognized error messages do not confirm recovery. CLI observations retain a
+file identity and byte cursor, retry partial writes, and ignore automatic context
+and compaction summaries. Checks never send another prompt.
 Confirmation proves observed activity, not task completion or causation.
 
 Both events include an attempt ID, host, harness, reason, and elapsed seconds.
@@ -59,16 +63,16 @@ is enabled. Telemetry excludes session paths, thread IDs, prompts, and output te
 
 ## Discord success alerts
 
-When Discord is configured, every confirmed recovery uses the same success
+Every confirmed recovery uses the same durable success
 notification path, including bb submission retries and daemon interruptions.
 The message includes the host, agent, and thread title (or target reference when
 no title is available). It says `Recovery confirmed`; sending or queueing input
-alone does not qualify. The existing observation window still applies.
+alone does not qualify.
 
 The watcher atomically saves the completed observation and its pending message
 in `state.json`. Alerts remain pending across restarts, temporary HTTP failures,
-and temporary loss of webhook configuration. Discord disabled at both dispatch
-and confirmation creates no backlog. Existing attempt and error alerts remain
+and missing webhook configuration. Successes observed without a configured webhook
+remain queued and are delivered after one is configured. Existing attempt and error alerts remain
 best effort; confirmed-success alerts have no memory-queue drop limit.
 
 The delivery worker uses `wait=true` and requires a returned Discord message ID.
@@ -79,7 +83,8 @@ turn. Permanent request errors pause the affected alert; an invalid or inaccessi
 webhook pauses all success delivery until the URL changes or a retry is requested.
 
 `./install.sh status` shows the pending count, delivery errors, and last confirmed
-delivery. Logs distinguish `discord_delivered`, `discord_delivery_failed`, and
+delivery, plus recoveries awaiting progress and unavailable observation sources.
+Logs distinguish `discord_delivered`, `discord_delivery_failed`, and
 `discord_delivery_paused`. Webhook URLs, tokens, and response bodies are never
 included in delivery state or logs. The last 100 message receipts are retained.
 
@@ -91,6 +96,34 @@ send duplicates. A crash or lost connection after Discord creates a message but
 before the receipt is saved can cause a duplicate on retry. This is delivery with
 retries, not an exactly-once guarantee. Deleting or corrupting local state also
 falls outside that guarantee.
+
+## Native Codex recovery
+
+The watcher also reads Codex's local SQLite logs. It correlates native retry warnings
+with assistant/tool progress in that exact native session and turn. New builds with
+the experiment 0021 patch save content-free `recovery_started`, `recovery_confirmed`
+and terminal `recovery_unconfirmed` records with a stable recovery ID, including
+`codex exec --ephemeral`. These awaited SQLite writes bypass the diagnostic logging
+buffer and its verbosity setting. Recovery records are exempt from diagnostic-log
+retention limits so a paused watcher can catch up. Valid completed compaction also
+counts as model progress. Older binaries sharing the same Codex home still apply
+their original retention rules. These records do not contain prompts, output, tool
+arguments or credentials. Older interactive
+builds use retry warnings plus rollout history; older exec builds without these
+records cannot report native recovery through this source.
+
+The default source is `CODEX_HOME`, otherwise `~/.codex`. Additional homes can be
+provided through `IMMORTAL_CODEX_HOMES` (colon-separated paths on macOS). The first
+scan starts at existing log history's end; it does not replay old incidents. Later
+events, pending observations and confirmations survive watcher restarts. If the
+database does not yet exist, the first new recovery is observed. Native
+checkpoints and queued alerts are saved together. Watcher/native correlations
+prevent reporting the same recovery twice, including delayed diagnostic writes.
+BB turn IDs are mapped to native IDs where available; otherwise deduplication uses
+the matched accepted-request interval in the same provider session.
+
+Source events must be available locally. Missing/deleted state, inaccessible custom
+Codex homes and older non-reporting binaries remain explicit coverage limits.
 
 Protocol references: [Discord webhooks](https://docs.discord.com/developers/resources/webhook#execute-webhook)
 and [rate limits](https://docs.discord.com/developers/topics/rate-limits#exceeding-a-rate-limit).

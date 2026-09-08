@@ -18,6 +18,7 @@ from immortal.hosts import terminal as host_terminal
 from immortal.core import notify
 from immortal.core import discord_outbox
 from immortal.core import outcomes
+from immortal.core import native_recovery
 from immortal.core import bb_recovery
 from immortal.core import ready
 from immortal.core import telemetry
@@ -322,6 +323,10 @@ def run_provider_check(state):
         return
     state["provider_check_next_at"] = iso_after(now, PROVIDER_CHECK_SECS)
     outcomes.check(state, host_bb._thread_events, now)
+    try:
+        native_recovery.tick(state, now)
+    except Exception:
+        log("native_recovery_error", reason="observation_failed")
     telemetry.heartbeat()
     stamp = now_iso(now)
     revive_pass(state, (stamp, stamp), "provider")

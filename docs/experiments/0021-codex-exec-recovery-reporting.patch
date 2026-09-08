@@ -1,0 +1,589 @@
+diff --git a/codex-rs/core/src/responses_retry.rs b/codex-rs/core/src/responses_retry.rs
+--- a/codex-rs/core/src/responses_retry.rs
++++ b/codex-rs/core/src/responses_retry.rs
+@@ -10,6 +10,8 @@
+ use codex_features::Feature;
+ use codex_protocol::error::CodexErr;
+ use codex_protocol::error::CodexErrorDetails;
++use codex_protocol::models::ContentItem;
++use codex_protocol::models::ResponseItem;
+ use codex_protocol::protocol::EventMsg;
+ use codex_protocol::protocol::WarningEvent;
+ use tracing::warn;
+@@ -27,14 +29,115 @@
+     retries: u64,
+     connection_retries: u64,
+     connection_retry_delay: Duration,
++    recovery_id: Option<uuid::Uuid>,
++    progress_observed: bool,
+ }
+ 
+ impl Default for ResponsesStreamRetryState {
+     fn default() -> Self {
+         Self {
++            recovery_id: None,
++            progress_observed: false,
+             retries: 0,
+             connection_retries: 0,
+             connection_retry_delay: INITIAL_CONNECTION_RETRY_DELAY,
++        }
++    }
++}
++
++impl ResponsesStreamRetryState {
++    async fn record_recovery_started(&mut self, sess: &Session, turn_context: &TurnContext) {
++        if self.recovery_id.is_none() {
++            let recovery_id = uuid::Uuid::new_v4();
++            self.recovery_id = Some(recovery_id);
++            self.progress_observed = false;
++            persist_recovery_event(sess, turn_context, recovery_id, "recovery_started").await;
++        }
++    }
++
++    pub(crate) async fn finish_observation(&mut self, sess: &Session, turn_context: &TurnContext) {
++        let event = if self.progress_observed {
++            "recovery_confirmed"
++        } else {
++            "recovery_unconfirmed"
++        };
++        if let Some(recovery_id) = self.recovery_id
++            && persist_recovery_event(sess, turn_context, recovery_id, event).await
++        {
++            self.recovery_id = None;
++        }
++    }
++
++    pub(crate) async fn observe_completed_item(
++        &mut self,
++        item: &ResponseItem,
++        sess: &Session,
++        turn_context: &TurnContext,
++    ) {
++        if self.recovery_id.is_none() {
++            return;
++        }
++        let assistant_text = matches!(item, ResponseItem::Message { role, content, .. }
++        if role == "assistant" && content.iter().any(|part| {
++            matches!(part, ContentItem::OutputText { text } if !text.trim().is_empty())
++        }));
++        let tool_call = matches!(
++            item,
++            ResponseItem::FunctionCall { .. }
++                | ResponseItem::CustomToolCall { .. }
++                | ResponseItem::LocalShellCall { .. }
++                | ResponseItem::ToolSearchCall { .. }
++                | ResponseItem::WebSearchCall { .. }
++                | ResponseItem::ImageGenerationCall { .. }
++        );
++        let compaction = matches!(item, ResponseItem::Compaction { encrypted_content, .. }
++            if !encrypted_content.trim().is_empty());
++        if assistant_text || tool_call || compaction {
++            self.progress_observed = true;
++            self.finish_observation(sess, turn_context).await;
++        }
++    }
++}
++
++// Bypass the best-effort tracing queue: successful recoveries must survive log saturation.
++// Ephemeral sessions store only these operational IDs, never conversation content.
++async fn persist_recovery_event(
++    sess: &Session,
++    turn_context: &TurnContext,
++    recovery_id: uuid::Uuid,
++    event: &str,
++) -> bool {
++    let state_db = match &sess.services.state_db {
++        Some(state_db) => Some(state_db.clone()),
++        None => crate::init_state_db(&turn_context.config).await,
++    };
++    let Some(state_db) = state_db else {
++        return false;
++    };
++    let now = std::time::SystemTime::now()
++        .duration_since(std::time::UNIX_EPOCH)
++        .unwrap_or_default();
++    let entry = codex_state::LogEntry {
++        ts: now.as_secs() as i64,
++        ts_nanos: now.subsec_nanos() as i64,
++        level: "INFO".to_string(),
++        target: "codex_core::recovery_reporting".to_string(),
++        message: None,
++        feedback_log_body: Some(format!(
++            "{event} turn_id={} recovery_id={recovery_id}",
++            turn_context.sub_id
++        )),
++        thread_id: Some(sess.thread_id().to_string()),
++        process_uuid: None,
++        module_path: None,
++        file: None,
++        line: None,
++    };
++    match state_db.insert_log(&entry).await {
++        Ok(()) => true,
++        Err(err) => {
++            warn!(error = %err, "failed to persist recovery event");
++            false
+         }
+     }
+ }
+@@ -79,6 +182,9 @@
+         retry_state.connection_retry_delay = retry_delay
+             .saturating_mul(2)
+             .min(MAX_CONNECTION_RETRY_DELAY);
++        retry_state
++            .record_recovery_started(sess, turn_context)
++            .await;
+         return Ok(());
+     }
+ 
+@@ -96,6 +202,9 @@
+         )
+         .await;
+         retry_state.retries = 0;
++        retry_state
++            .record_recovery_started(sess, turn_context)
++            .await;
+         return Ok(());
+     }
+ 
+@@ -113,6 +222,9 @@
+         .await;
+         codex_client::record_retry!(retry_count, delay, operation);
+         tokio::time::sleep(delay).await;
++        retry_state
++            .record_recovery_started(sess, turn_context)
++            .await;
+         return Ok(());
+     }
+ 
+diff --git a/codex-rs/core/src/responses_retry_tests.rs b/codex-rs/core/src/responses_retry_tests.rs
+--- a/codex-rs/core/src/responses_retry_tests.rs
++++ b/codex-rs/core/src/responses_retry_tests.rs
+@@ -41,3 +41,138 @@
+         "sampling_error=stream disconnected before completion: websocket closed by server before response.completed"
+     ));
+ }
++
++#[tokio::test]
++async fn recovery_reporting_requires_progress_and_keeps_one_id_per_episode() {
++    let (mut session, turn_context) = make_session_and_context().await;
++    session.services.state_db = crate::init_state_db(&turn_context.config).await;
++    let state_db = session
++        .services
++        .state_db
++        .as_ref()
++        .expect("state database")
++        .clone();
++    let mut state = super::ResponsesStreamRetryState::default();
++    let message = serde_json::from_value(serde_json::json!({
++        "type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "private-fixture-output"}]
++    })).expect("valid response item");
++    state
++        .observe_completed_item(&message, &session, &turn_context)
++        .await;
++    state.record_recovery_started(&session, &turn_context).await;
++    let first_id = state.recovery_id.expect("recovery started");
++    state.record_recovery_started(&session, &turn_context).await;
++    assert_eq!(state.recovery_id, Some(first_id));
++    for item in [
++        serde_json::json!({"type": "message", "role": "user", "content": [{"type": "output_text", "text": "input"}]}),
++        serde_json::json!({"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "  "}]}),
++        serde_json::json!({"type": "reasoning", "summary": []}),
++        serde_json::json!({"type": "compaction", "encrypted_content": ""}),
++    ] {
++        let item = serde_json::from_value(item).expect("valid response item");
++        state
++            .observe_completed_item(&item, &session, &turn_context)
++            .await;
++        assert_eq!(state.recovery_id, Some(first_id));
++    }
++    state
++        .observe_completed_item(&message, &session, &turn_context)
++        .await;
++    state
++        .observe_completed_item(&message, &session, &turn_context)
++        .await;
++    assert_eq!(state.recovery_id, None);
++    state.record_recovery_started(&session, &turn_context).await;
++    let second_id = state.recovery_id.expect("new recovery started");
++    assert_ne!(second_id, first_id);
++    let tool = serde_json::from_value(serde_json::json!({
++        "type": "function_call", "name": "fixture_tool", "arguments": "private-fixture-arguments", "call_id": "call_fixture"
++    })).expect("valid tool call");
++    state
++        .observe_completed_item(&tool, &session, &turn_context)
++        .await;
++    assert_eq!(state.recovery_id, None);
++    state.record_recovery_started(&session, &turn_context).await;
++    state.finish_observation(&session, &turn_context).await;
++    state
++        .observe_completed_item(&message, &session, &turn_context)
++        .await;
++    state.record_recovery_started(&session, &turn_context).await;
++    let compaction = serde_json::from_value(serde_json::json!({
++        "type": "compaction", "encrypted_content": "private-fixture-compaction"
++    }))
++    .expect("valid compaction item");
++    state
++        .observe_completed_item(&compaction, &session, &turn_context)
++        .await;
++    let rows = state_db
++        .query_logs(&codex_state::LogQuery {
++            thread_ids: vec![session.thread_id().to_string()],
++            ..Default::default()
++        })
++        .await
++        .expect("persisted recovery events");
++    assert_eq!(rows.len(), 8);
++    let logs = rows
++        .iter()
++        .map(|row| row.message.as_deref().unwrap_or_default())
++        .collect::<Vec<_>>()
++        .join("\n");
++    assert_eq!(logs.matches("recovery_started").count(), 4);
++    assert_eq!(logs.matches("recovery_confirmed").count(), 3);
++    assert_eq!(logs.matches("recovery_unconfirmed").count(), 1);
++    assert_eq!(logs.matches(&first_id.to_string()).count(), 2);
++    assert_eq!(logs.matches(&second_id.to_string()).count(), 2);
++    assert!(!logs.contains("private-fixture"));
++    assert!(!logs.contains("fixture_tool"));
++    assert!(
++        rows.iter()
++            .all(|row| row.target == "codex_core::recovery_reporting")
++    );
++}
++
++#[tokio::test]
++async fn confirmed_progress_survives_a_transient_persistence_failure() {
++    let (mut session, turn_context) = make_session_and_context().await;
++    session.services.state_db = crate::init_state_db(&turn_context.config).await;
++    let mut state = super::ResponsesStreamRetryState::default();
++    state.record_recovery_started(&session, &turn_context).await;
++    let recovery_id = state.recovery_id;
++    session
++        .services
++        .state_db
++        .as_ref()
++        .expect("state database")
++        .close()
++        .await;
++    let message = serde_json::from_value(serde_json::json!({
++        "type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "fixture-progress"}]
++    })).expect("valid assistant item");
++    state
++        .observe_completed_item(&message, &session, &turn_context)
++        .await;
++    assert_eq!(state.recovery_id, recovery_id);
++    assert!(state.progress_observed);
++    session.services.state_db = crate::init_state_db(&turn_context.config).await;
++    state.finish_observation(&session, &turn_context).await;
++    assert_eq!(state.recovery_id, None);
++    let rows = session
++        .services
++        .state_db
++        .as_ref()
++        .expect("reopened database")
++        .query_logs(&codex_state::LogQuery {
++            thread_ids: vec![session.thread_id().to_string()],
++            ..Default::default()
++        })
++        .await
++        .expect("persisted events");
++    assert_eq!(rows.len(), 2);
++    let logs = rows
++        .iter()
++        .map(|row| row.message.as_deref().unwrap_or_default())
++        .collect::<Vec<_>>()
++        .join("\n");
++    assert!(logs.contains("recovery_confirmed"));
++    assert!(!logs.contains("recovery_unconfirmed"));
++}
+diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
+--- a/codex-rs/core/src/session/turn.rs
++++ b/codex-rs/core/src/session/turn.rs
+@@ -1428,6 +1428,7 @@
+             base_instructions.clone(),
+         );
+         let err = match try_run_sampling_request(
++            &mut retry_state,
+             tool_runtime.clone(),
+             Arc::clone(&sess),
+             Arc::clone(&step_context),
+@@ -1441,11 +1442,13 @@
+         .await
+         {
+             Ok(output) => {
++                retry_state.finish_observation(&sess, &turn_context).await;
+                 return Ok((output, original_input.unwrap_or(prompt.input)));
+             }
+             Err(err) => match err.details() {
+                 CodexErrorDetails::ContextWindowExceeded => {
+                     sess.set_total_tokens_full(&turn_context).await;
++                    retry_state.finish_observation(&sess, &turn_context).await;
+                     return Err(err);
+                 }
+                 CodexErrorDetails::UsageLimitReached(e) => {
+@@ -1453,6 +1456,7 @@
+                     if let Some(rate_limits) = rate_limits {
+                         sess.update_rate_limits(&turn_context, *rate_limits).await;
+                     }
++                    retry_state.finish_observation(&sess, &turn_context).await;
+                     return Err(err);
+                 }
+                 _ => err,
+@@ -1464,19 +1468,26 @@
+         }
+ 
+         if !err.is_retryable() {
++            retry_state.finish_observation(&sess, &turn_context).await;
+             return Err(err);
+         }
+ 
+-        handle_retryable_response_stream_error(
+-            &mut retry_state,
+-            max_retries,
+-            err,
+-            client_session,
+-            &sess,
+-            &turn_context,
+-            ResponsesStreamRequest::Sampling,
+-        )
+-        .await?;
++        let retry_result = tokio::select! {
++            result = handle_retryable_response_stream_error(
++                &mut retry_state,
++                max_retries,
++                err,
++                client_session,
++                &sess,
++                &turn_context,
++                ResponsesStreamRequest::Sampling,
++            ) => result,
++            _ = cancellation_token.cancelled() => Err(CodexErr::TurnAborted),
++        };
++        if let Err(err) = retry_result {
++            retry_state.finish_observation(&sess, &turn_context).await;
++            return Err(err);
++        }
+         turn_context.turn_timing_state.record_sampling_retry();
+     }
+ }
+@@ -2226,6 +2237,7 @@
+     )
+ )]
+ async fn try_run_sampling_request(
++    retry_state: &mut ResponsesStreamRetryState,
+     tool_runtime: ToolCallRuntime,
+     sess: Arc<Session>,
+     step_context: Arc<StepContext>,
+@@ -2345,6 +2357,9 @@
+         match event {
+             ResponseEvent::Created => {}
+             ResponseEvent::OutputItemDone(mut item) => {
++                retry_state
++                    .observe_completed_item(&item, &sess, &turn_context)
++                    .await;
+                 assign_missing_streamed_response_item_id(&mut item, active_item.as_ref());
+                 if analytics_tool_call_ids.len() < MAX_ANALYTICS_TOOL_CALL_IDS_PER_RESPONSE {
+                     let call_id = match &item {
+diff --git a/codex-rs/core/src/compact_remote_v2.rs b/codex-rs/core/src/compact_remote_v2.rs
+--- a/codex-rs/core/src/compact_remote_v2.rs
++++ b/codex-rs/core/src/compact_remote_v2.rs
+@@ -400,10 +400,23 @@
+         };
+ 
+         match result {
+-            Ok(compaction_output) => return Ok(compaction_output),
+-            Err(err) if !err.is_retryable() => return Err(err),
++            Ok(compaction_output) => {
++                retry_state
++                    .observe_completed_item(
++                        &compaction_output.compaction_output,
++                        sess,
++                        turn_context,
++                    )
++                    .await;
++                retry_state.finish_observation(sess, turn_context).await;
++                return Ok(compaction_output);
++            }
++            Err(err) if !err.is_retryable() => {
++                retry_state.finish_observation(sess, turn_context).await;
++                return Err(err);
++            }
+             Err(err) => {
+-                handle_retryable_response_stream_error(
++                if let Err(err) = handle_retryable_response_stream_error(
+                     &mut retry_state,
+                     max_retries,
+                     err,
+@@ -412,7 +425,11 @@
+                     turn_context,
+                     ResponsesStreamRequest::RemoteCompactionV2,
+                 )
+-                .await?;
++                .await
++                {
++                    retry_state.finish_observation(sess, turn_context).await;
++                    return Err(err);
++                }
+             }
+         }
+     }
+@@ -1149,6 +1166,35 @@
+     }
+ 
+     #[tokio::test]
++    async fn collect_compaction_output_rejects_missing_or_unfinished_output() {
++        let (sess, turn_context, _rx) =
++            crate::session::tests::make_session_and_context_with_rx().await;
++        let missing_item = response_stream(vec![Ok(ResponseEvent::Completed {
++            response_id: "resp-empty".to_string(),
++            token_usage: None,
++            usage_metadata: None,
++            end_turn: Some(true),
++        })]);
++        assert!(
++            collect_compaction_output(&sess, &turn_context, missing_item)
++                .await
++                .is_err()
++        );
++        let unfinished = response_stream(vec![Ok(ResponseEvent::OutputItemDone(
++            ResponseItem::Compaction {
++                id: None,
++                encrypted_content: "fixture".to_string(),
++                internal_chat_message_metadata_passthrough: None,
++            },
++        ))]);
++        assert!(
++            collect_compaction_output(&sess, &turn_context, unfinished)
++                .await
++                .is_err()
++        );
++    }
++
++    #[tokio::test]
+     async fn collect_compaction_output_accepts_additional_output_items() {
+         let compaction = ResponseItem::Compaction {
+             id: None,
+diff --git a/codex-rs/state/src/runtime/logs.rs b/codex-rs/state/src/runtime/logs.rs
+--- a/codex-rs/state/src/runtime/logs.rs
++++ b/codex-rs/state/src/runtime/logs.rs
+@@ -52,6 +52,9 @@
+     /// "Threadless" means the log row is not associated with any conversation
+     /// thread, so retention is keyed by process identity instead.
+     ///
++    /// Recovery reporting metadata is retained until an explicit consumer cleanup;
++    /// ordinary logging must not erase recoveries while the watcher is offline.
++    ///
+     /// This runs inside the same transaction as the insert so callers never
+     /// observe "inserted but not yet pruned" rows.
+     async fn prune_logs_after_insert(
+@@ -66,8 +69,9 @@
+         if !thread_ids.is_empty() {
+             // Cheap precheck: only run the heavier window-function prune for
+             // threads that are currently above the cap.
+-            let mut over_limit_threads_query =
+-                QueryBuilder::<Sqlite>::new("SELECT thread_id FROM logs WHERE thread_id IN (");
++            let mut over_limit_threads_query = QueryBuilder::<Sqlite>::new(
++                "SELECT thread_id FROM logs WHERE target != 'codex_core::recovery_reporting' AND thread_id IN (",
++            );
+             {
+                 let mut separated = over_limit_threads_query.separated(", ");
+                 for thread_id in &thread_ids {
+@@ -113,7 +117,7 @@
+                 ORDER BY ts DESC, ts_nanos DESC, id DESC
+             ) AS row_number
+         FROM logs
+-        WHERE thread_id IN (
++        WHERE target != 'codex_core::recovery_reporting' AND thread_id IN (
+ "#,
+                 );
+                 {
+@@ -281,10 +285,12 @@
+     }
+ 
+     pub(crate) async fn delete_logs_before(&self, cutoff_ts: i64) -> anyhow::Result<u64> {
+-        let result = sqlx::query("DELETE FROM logs WHERE ts < ?")
+-            .bind(cutoff_ts)
+-            .execute(self.logs_pool.as_ref())
+-            .await?;
++        let result = sqlx::query(
++            "DELETE FROM logs WHERE ts < ? AND target != 'codex_core::recovery_reporting'",
++        )
++        .bind(cutoff_ts)
++        .execute(self.logs_pool.as_ref())
++        .await?;
+         Ok(result.rows_affected())
+     }
+ 
+@@ -896,6 +902,70 @@
+     }
+ 
+     #[tokio::test]
++    async fn recovery_metadata_survives_log_caps_and_age_retention() {
++        let codex_home = unique_temp_dir();
++        let runtime = StateRuntime::init(
++            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
++            "test-provider".to_string(),
++        )
++        .await
++        .expect("initialize runtime");
++        let recovery = LogEntry {
++            ts: 1,
++            ts_nanos: 0,
++            level: "INFO".to_string(),
++            target: "codex_core::recovery_reporting".to_string(),
++            message: Some("recovery_confirmed turn_id=fixture recovery_id=fixture".to_string()),
++            feedback_log_body: None,
++            thread_id: Some("recovery-thread".to_string()),
++            process_uuid: None,
++            module_path: None,
++            file: None,
++            line: None,
++        };
++        runtime
++            .insert_log(&recovery)
++            .await
++            .expect("persist recovery");
++        let entries = (2..=1_003)
++            .map(|ts| LogEntry {
++                ts,
++                target: "ordinary".to_string(),
++                message: Some(if ts < 4 {
++                    "a".repeat(6 * 1024 * 1024)
++                } else {
++                    "ordinary".to_string()
++                }),
++                ..recovery.clone()
++            })
++            .collect::<Vec<_>>();
++        runtime
++            .insert_logs(&entries)
++            .await
++            .expect("insert ordinary logs over both caps");
++        let rows = runtime
++            .query_logs(&LogQuery::default())
++            .await
++            .expect("retained logs");
++        assert!(
++            rows.iter()
++                .any(|row| row.target == recovery.target && row.message == recovery.message)
++        );
++        assert!(rows.len() <= 1_001);
++        runtime
++            .delete_logs_before(2_000)
++            .await
++            .expect("age cleanup");
++        let rows = runtime
++            .query_logs(&LogQuery::default())
++            .await
++            .expect("retained recovery metadata");
++        assert_eq!(rows.len(), 1);
++        assert_eq!(rows[0].message, recovery.message);
++        let _ = tokio::fs::remove_dir_all(codex_home).await;
++    }
++
++    #[tokio::test]
+     async fn insert_logs_prunes_old_rows_when_thread_exceeds_size_limit() {
+         let codex_home = unique_temp_dir();
+         let runtime = StateRuntime::init(

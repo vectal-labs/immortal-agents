@@ -153,9 +153,23 @@ def status():
     health = state.get("discord_status", {})
     if not isinstance(pending, dict) or not isinstance(health, dict):
         return "Discord: invalid delivery state"
-    if not notify.webhook_url():
-        return f"Discord: not configured; {len(pending)} pending success alerts"
-    text = f"Discord: configured; {len(pending)} pending success alerts"
+    configured = "configured" if notify.webhook_url() else "not configured"
+    text = f"Discord: {configured}; {len(pending)} pending success alerts"
+    observations = state.get("pending_revives", {})
+    if isinstance(observations, dict) and observations:
+        text += f"; {len(observations)} recoveries awaiting progress"
+        unavailable = sum(bool(value.get("observation_error")) for value in observations.values()
+                          if isinstance(value, dict))
+        if unavailable:
+            text += f" ({unavailable} with unavailable logs)"
+    native = state.get("native_codex", {})
+    if isinstance(native, dict):
+        waiting = sum(len(source.get("pending", {})) for source in native.values() if isinstance(source, dict))
+        unavailable = sum(bool(source.get("error")) for source in native.values() if isinstance(source, dict))
+        if waiting:
+            text += f"; {waiting} native recoveries awaiting progress"
+        if unavailable:
+            text += f"; {unavailable} native log sources unavailable"
     errors = sorted({entry.get("error") for entry in pending.values()
                      if isinstance(entry, dict) and entry.get("error")})
     if errors:

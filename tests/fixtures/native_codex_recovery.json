@@ -1,0 +1,94 @@
+{
+  "source": "Trimmed real app-server loopback tools_resume capture, 2026-09-08. Same binary as experiment 0019. Session/turn IDs, output and error detail sanitized; prompts, tools arguments and contexts omitted. Kept process alive 11s for native diagnostic flush. Tool execution assertions failed under sandbox, but transport recovered and both turns completed.",
+  "retry": {
+    "ts": 1788897333,
+    "ts_nanos": 703784000,
+    "thread_id": "session-1",
+    "target": "codex_core::responses_retry",
+    "feedback_log_body": "stream disconnected - retrying sampling request (1/1) turn_id=turn-1"
+  },
+  "rollout": [
+    {
+      "timestamp": "2026-09-08T19:55:18.427Z",
+      "type": "event_msg",
+      "payload": {
+        "type": "task_started",
+        "turn_id": "turn-1"
+      }
+    },
+    {
+      "timestamp": "2026-09-08T19:55:18.572Z",
+      "type": "turn_context",
+      "payload": {
+        "turn_id": "turn-1"
+      }
+    },
+    {
+      "timestamp": "2026-09-08T19:55:18.620Z",
+      "type": "response_item",
+      "payload": {
+        "type": "custom_tool_call",
+        "name": "exec"
+      }
+    },
+    {
+      "timestamp": "2026-09-08T19:55:34.046Z",
+      "type": "response_item",
+      "payload": {
+        "type": "message",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "RECOVERY_OK"
+          }
+        ]
+      }
+    },
+    {
+      "timestamp": "2026-09-08T19:55:34.048Z",
+      "type": "event_msg",
+      "payload": {
+        "type": "task_complete",
+        "turn_id": "turn-1"
+      }
+    },
+    {
+      "timestamp": "2026-09-08T19:55:45.121Z",
+      "type": "event_msg",
+      "payload": {
+        "type": "task_started",
+        "turn_id": "turn-2"
+      }
+    },
+    {
+      "timestamp": "2026-09-08T19:55:45.271Z",
+      "type": "turn_context",
+      "payload": {
+        "turn_id": "turn-2"
+      }
+    },
+    {
+      "timestamp": "2026-09-08T19:55:45.320Z",
+      "type": "response_item",
+      "payload": {
+        "type": "message",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "RECOVERY_OK"
+          }
+        ]
+      }
+    },
+    {
+      "timestamp": "2026-09-08T19:55:45.323Z",
+      "type": "event_msg",
+      "payload": {
+        "type": "task_complete",
+        "turn_id": "turn-2"
+      }
+    }
+  ]
+}

@@ -3,17 +3,19 @@
 import json
 import os
 import queue
+import sqlite3
 import subprocess
 import sys
 import threading
 import time
 import unittest
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
 
-from immortal.core import logbook, notify, outcomes
+from immortal.core import logbook, notify, outcomes, native_recovery
 from support import isolate_state
 
 
@@ -79,8 +81,14 @@ class DiscordDeliveryTests(unittest.TestCase):
             row = {'type': 'assistant' if harness == 'claude' else 'message',
                    'message': {'role': 'assistant', 'content': [{'type': 'text', 'text': 'Working again'}]}}
         path.write_text(json.dumps({**row, 'timestamp': stamp.isoformat()}) + '\n')
-        events = [{'type': 'item/completed', 'createdAt': stamp.timestamp() * 1000,
-                   'data': {'item': {'type': 'agentMessage', 'text': 'Working again'}}}]
+        events = [
+            {'type': 'client/turn/requested', 'data': {'requestId': 'resume',
+                'input': [{'type': 'text', 'text': 'keep going'}]}},
+            {'type': 'turn/input/accepted', 'scope': {'turnId': 'recovered'},
+             'data': {'clientRequestId': 'resume'}},
+            {'type': 'item/completed', 'createdAt': stamp.timestamp() * 1000,
+             'scope': {'turnId': 'recovered'},
+             'data': {'item': {'type': 'agentMessage', 'text': 'Working again'}}}]
         if finish:
             outcomes.check(state, lambda _: events, self.now + timedelta(seconds=10))
         return state, attempt_id
@@ -147,6 +155,32 @@ print(discord_outbox.status())
         self.assertIn('My task', message)
         self.assertEqual(saved['discord_outbox'], state['discord_outbox'])
 
+    def test_real_native_capture_reaches_webhook_and_survives_restart(self):
+        fixture = json.loads((Path(__file__).parent / 'fixtures/native_codex_recovery.json').read_text())
+        home = self.root / 'codex'
+        home.mkdir()
+        rollout = home / 'rollout.jsonl'
+        rollout.touch()
+        with closing(sqlite3.connect(home / 'logs_2.sqlite')) as db, db:
+            db.execute('CREATE TABLE logs (id INTEGER PRIMARY KEY, ts INTEGER, ts_nanos INTEGER, thread_id TEXT, target TEXT, feedback_log_body TEXT)')
+        with closing(sqlite3.connect(home / 'state_5.sqlite')) as db, db:
+            db.execute('CREATE TABLE threads (id TEXT, rollout_path TEXT)')
+            db.execute('INSERT INTO threads VALUES (?, ?)', ('session-1', str(rollout)))
+        state = {}
+        native_recovery.tick(state, homes=[home])
+        retry = fixture['retry']
+        with closing(sqlite3.connect(home / 'logs_2.sqlite')) as db, db:
+            db.execute('INSERT INTO logs VALUES (1,?,?,?,?,?)',
+                       tuple(retry[key] for key in ('ts', 'ts_nanos', 'thread_id', 'target', 'feedback_log_body')))
+        rollout.write_text(''.join(json.dumps(row) + '\n' for row in fixture['rollout']))
+        native_recovery.tick(state, homes=[home])
+        self.assertEqual(len(state['discord_outbox']), 1)
+        saved = self.drain()
+        self.assertIn('Recovery confirmed: Codex', self.received.get(timeout=1)[1]['content'])
+        native_recovery.tick(saved, homes=[home])
+        self.drain()
+        self.assertTrue(self.received.empty())
+
     def test_bb_submission_confirmation_has_a_success_alert(self):
         state, attempt_id = self.confirm('bb', 'codex')
         self.assertIn('Recovery confirmed: Codex in bb', state['discord_outbox'][attempt_id]['text'])
@@ -159,6 +193,58 @@ print(discord_outbox.status())
                 self.assertEqual(len(state['discord_outbox']), 1)
                 self.assertIn(f'in {host}', state['discord_outbox'][attempt_id]['text'])
                 self.assertIn('My task', state['discord_outbox'][attempt_id]['text'])
+
+    def test_delayed_recovery_after_restart_reaches_discord(self):
+        state, attempt_id = self.confirm(finish=False)
+        session = self.root / 'session.jsonl'
+        session.write_text('')
+        outcomes.check(state, None, self.now + timedelta(minutes=11))
+        saved = logbook.load_state()
+        self.assertIn(attempt_id, saved['pending_revives'])
+        stamp = self.now + timedelta(hours=2)
+        session.write_text(json.dumps({'type': 'assistant', 'timestamp': stamp.isoformat(),
+            'message': {'content': [{'type': 'text', 'text': 'Finally resumed'}]}}) + '\n')
+        outcomes.check(saved, None, stamp + timedelta(seconds=1))
+        delivered = self.drain()
+        self.assertIn(attempt_id, delivered['discord_delivered'])
+        self.assertIn('Recovery confirmed', self.received.get(timeout=1)[1]['content'])
+        self.drain()
+        self.assertTrue(self.received.empty())
+
+    def test_bb_tool_only_recovery_reaches_discord(self):
+        state, attempt_id = self.confirm('bb', 'codex', extra={
+            'bb_retry': {'original_request_id': 'original', 'attempt': 2}}, finish=False)
+        events = [
+            {'type': 'client/turn/requested', 'seq': 1,
+             'data': {'requestId': 'retry', 'retryOfRequestId': 'original', 'retryAttempt': 2}},
+            {'type': 'turn/started', 'seq': 2, 'scope': {'turnId': 'recovered'}},
+            {'type': 'turn/input/accepted', 'seq': 3, 'scope': {'turnId': 'recovered'},
+             'data': {'clientRequestId': 'retry'}},
+            {'type': 'item/completed', 'seq': 4, 'scope': {'turnId': 'recovered'},
+             'createdAt': (self.now.timestamp() + 900) * 1000,
+             'data': {'item': {'type': 'commandExecution', 'status': 'completed', 'exitCode': 0}}},
+        ]
+        outcomes.check(state, lambda _: events, self.now + timedelta(seconds=901))
+        delivered = self.drain()
+        self.assertIn(attempt_id, delivered['discord_delivered'])
+        self.assertIn('Recovery confirmed', self.received.get(timeout=1)[1]['content'])
+
+    def test_unrelated_bb_request_cannot_confirm_a_resume(self):
+        state, attempt_id = self.confirm('bb', 'acp-cursor', finish=False)
+        events = [
+            {'type': 'client/turn/requested', 'seq': 1,
+             'createdAt': (self.now.timestamp() + 1) * 1000,
+             'data': {'requestId': 'someone-else', 'input': [{'type': 'text', 'text': 'Different work'}]}},
+            {'type': 'turn/started', 'seq': 2, 'scope': {'turnId': 'unrelated'}},
+            {'type': 'turn/input/accepted', 'seq': 3, 'scope': {'turnId': 'unrelated'},
+             'data': {'clientRequestId': 'someone-else'}},
+            {'type': 'item/completed', 'seq': 4, 'scope': {'turnId': 'unrelated'},
+             'createdAt': (self.now.timestamp() + 5) * 1000,
+             'data': {'item': {'type': 'agentMessage', 'text': 'New work completed'}}},
+        ]
+        outcomes.check(state, lambda _: events, self.now + timedelta(seconds=10))
+        self.assertNotIn(attempt_id, logbook.load_state().get('discord_outbox', {}))
+        self.assertFalse(state.get('pending_revives'))
 
     def test_pending_alert_is_delivered_by_a_new_process_and_not_repeated(self):
         _, attempt_id = self.confirm()
@@ -293,10 +379,14 @@ print(discord_outbox.status())
         self.drain()
         self.received.get(timeout=1)
 
-    def test_discord_disabled_does_not_accumulate_historical_messages(self):
+    def test_missing_webhook_throughout_recovery_keeps_success_for_configuration_repair(self):
         with mock.patch.object(notify, 'webhook_url', return_value=None):
-            state, _ = self.confirm()
-        self.assertFalse(state.get('discord_outbox'))
+            state, attempt_id = self.confirm()
+        self.assertIn(attempt_id, state['discord_outbox'])
+        self.assertTrue(self.received.empty())
+        delivered = self.drain()
+        self.assertIn(attempt_id, delivered['discord_delivered'])
+        self.assertIn('Recovery confirmed', self.received.get(timeout=1)[1]['content'])
 
     def test_crash_before_atomic_completion_is_recovered_without_losing_alert(self):
         _, attempt_id = self.confirm(finish=False)

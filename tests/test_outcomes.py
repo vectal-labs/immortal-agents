@@ -72,18 +72,17 @@ class OutcomeTests(unittest.TestCase):
                     reason="assistant_output", elapsed_secs=40.0)
                 self.assertEqual(self.state["pending_revives"], {})
 
-    def test_missing_output_expires_as_unconfirmed(self):
-        self.track()
-        self.check(outcomes.OBSERVE_SECS)
-        self.assertEqual(self.send.call_args.args, ("revive_unconfirmed",))
-        self.assertEqual(self.send.call_args.kwargs["reason"], "no_output_observed")
-        self.assertEqual(self.state["pending_revives"], {})
+    def test_missing_output_remains_pending_without_a_time_limit(self):
+        attempt_id = self.track()
+        self.check(24 * 3600)
+        self.send.assert_not_called()
+        self.assertIn(attempt_id, self.state["pending_revives"])
 
-    def test_late_output_does_not_confirm_an_expired_window(self):
+    def test_late_output_confirms_after_the_old_window(self):
         self.track()
-        self.append(record("claude", seconds=outcomes.OBSERVE_SECS + 1))
-        self.check(outcomes.OBSERVE_SECS + 30)
-        self.assertEqual(self.send.call_args.args, ("revive_unconfirmed",))
+        self.append(record("claude", seconds=3601))
+        self.check(3630)
+        self.assertEqual(self.send.call_args.args, ("revive_confirmed",))
 
     def test_observation_survives_state_save_and_reload(self):
         self.track()
@@ -99,7 +98,7 @@ class OutcomeTests(unittest.TestCase):
         other = self.path.with_name("other.jsonl")
         other.write_text(json.dumps(record("claude")) + "\n")
         other.replace(self.path)
-        self.check(outcomes.OBSERVE_SECS)
+        self.check(3600)
         self.assertEqual(self.send.call_args.args, ("revive_unconfirmed",))
 
     def test_unknown_session_is_unconfirmed_not_success(self):
@@ -127,9 +126,9 @@ class OutcomeTests(unittest.TestCase):
         self.assertEqual(self.send.call_args.args, ("revive_confirmed",))
         self.assertEqual(self.send.call_args.kwargs["attempt_id"], old)
         self.assertEqual(self.send.call_args.kwargs["elapsed_secs"], 45)
-        self.check(60 + outcomes.OBSERVE_SECS)
-        self.assertEqual(self.send.call_args.args, ("revive_unconfirmed",))
-        self.assertEqual(self.send.call_args.kwargs["attempt_id"], new)
+        self.check(3660)
+        self.assertIn(new, self.state["pending_revives"])
+        self.assertEqual(self.send.call_count, 1)
 
     def test_codex_tool_calls_confirm_work_but_tool_results_do_not(self):
         for kind in ("function_call", "custom_tool_call"):
@@ -151,8 +150,14 @@ class OutcomeTests(unittest.TestCase):
         outcomes.track(self.state, "bb", "thread-1", "acp-cursor", {})
         def event(item_type, text):
             return {"type": "item/completed", "createdAt": (NOW.timestamp() + 10) * 1000,
+                    "scope": {"turnId": "resumed"},
                     "data": {"item": {"type": item_type, "text": text}}}
-        self.bb_events.return_value = [event("userMessage", "keep going"), event("agentMessage", "Error: PING timed out")]
+        self.bb_events.return_value = [
+            {"type": "client/turn/requested", "data": {"requestId": "resume",
+             "input": [{"type": "text", "text": "keep going"}]}},
+            {"type": "turn/input/accepted", "scope": {"turnId": "resumed"},
+             "data": {"clientRequestId": "resume"}},
+            event("userMessage", "keep going"), event("agentMessage", "Error: PING timed out")]
         self.check()
         self.send.assert_not_called()
         self.bb_events.return_value.append(event("agentMessage", "The tests now pass."))
@@ -168,8 +173,10 @@ class OutcomeTests(unittest.TestCase):
         self.bb_events.side_effect = OSError("unavailable")
         self.check()
         self.send.assert_not_called()
-        self.check(outcomes.OBSERVE_SECS)
-        self.assertEqual(self.send.call_args.kwargs["reason"], "observation_unavailable")
+        self.check(3600)
+        self.send.assert_not_called()
+        pending = next(iter(self.state["pending_revives"].values()))
+        self.assertEqual(pending["observation_error"], "observation_unavailable")
 
     def test_recorded_cursor_recovery_confirms_only_after_output(self):
         events = json.loads((Path(__file__).parent / "fixtures/bb_thr_rsgzd56nhq_events.json").read_text())

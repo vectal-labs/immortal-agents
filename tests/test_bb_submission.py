@@ -220,11 +220,19 @@ class DaemonRestartTests(unittest.TestCase):
                    if c.kwargs.get("detail") == "daemon_recovery_hourly_limit"]
         self.assertEqual(len(limited), 1)
 
-    def test_unconfirmed_recovery_alerts_once_and_survives_reload(self):
+    def test_pending_recovery_survives_long_wait_then_alerts_once_on_interruption(self):
         self.command.side_effect = host.subprocess.TimeoutExpired("bb", 60)
         self.run_at()
         self.state = logbook.load_state()
-        for seconds in (31 + outcomes.OBSERVE_SECS, 1000):
+        for seconds in (631, 1000):
+            outcomes.check(self.state, host._thread_events, RESTART_AT + timedelta(seconds=seconds))
+            self.state = logbook.load_state()
+        self.notice.assert_not_called()
+        self.assertEqual(len(self.state["pending_revives"]), 1)
+        self.events.append({"type": "system/thread/interrupted", "seq": 876,
+                            "createdAt": (RESTART_AT.timestamp() + 1100) * 1000,
+                            "data": {"reason": "user"}})
+        for seconds in (1101, 1200):
             outcomes.check(self.state, host._thread_events, RESTART_AT + timedelta(seconds=seconds))
             self.state = logbook.load_state()
         self.notice.assert_called_once()
@@ -239,6 +247,8 @@ class DaemonRestartTests(unittest.TestCase):
             {"type": "client/turn/requested", "data": {"requestId": "retry-1",
              "retryOfRequestId": "request-1", "retryAttempt": 2}},
             {"type": "turn/started", "scope": {"turnId": "retry-turn"}},
+            {"type": "turn/input/accepted", "scope": {"turnId": "retry-turn"},
+             "data": {"clientRequestId": "retry-1"}},
             {"type": "item/completed", "createdAt": (RESTART_AT.timestamp() + 40) * 1000,
              "scope": {"turnId": "old-turn"},
              "data": {"item": {"type": "agentMessage", "text": "Old output"}}},
@@ -405,6 +415,8 @@ class RecoveryPolicyTests(unittest.TestCase):
                 {'type': 'client/turn/requested', 'data': {'requestId': 'retry',
                     'retryOfRequestId': REQUEST, 'retryAttempt': self.target['submission']['attempt'] + 1}},
                 {'type': 'turn/started', 'scope': {'turnId': 'retry-turn'}},
+                {'type': 'turn/input/accepted', 'scope': {'turnId': 'retry-turn'},
+                 'data': {'clientRequestId': 'retry'}},
                 {'type': 'item/completed', 'createdAt': (sent.timestamp() + 5) * 1000,
                  'scope': {'turnId': 'retry-turn'},
                  'data': {'item': {'type': 'agentMessage', 'text': 'Back to work'}}},
@@ -565,7 +577,9 @@ class SubmissionOutcomeTests(unittest.TestCase):
                        [requested("retry", REQUEST), started("retry-turn"), requested("user"), output("retry-turn")]):
             with self.subTest(events=events):
                 self.assertIsNone(outcomes._output_at(attempt, lambda ref: events))
-        good = [requested("retry", REQUEST), started("retry-turn"), output("retry-turn")]
+        good = [requested("retry", REQUEST), started("retry-turn"),
+                {"type": "turn/input/accepted", "scope": {"turnId": "retry-turn"},
+                 "data": {"clientRequestId": "retry"}}, output("retry-turn")]
         self.assertIsNotNone(outcomes._output_at(attempt, lambda ref: good))
 
     def test_missing_error_details_log_and_alert_once(self):

@@ -1,5 +1,5 @@
 {
-  "version": "0.153.4+wake.1",
+  "version": "0.153.4+wake.2",
   "upstream_version": "0.153.4",
   "upstream_url": "https://github.com/openai/codex.git",
   "upstream_commit": "3d2ee51ca2d5db578f328aa75e20aa22c0197c9a",
@@ -13,6 +13,10 @@
     {
       "path": "docs/experiments/0019-codex-release-metadata.patch",
       "sha256": "31aa652087ba71f03b40dde0e4bbdb3e6f57803ca2547714ead3e87ddb85461e"
+    },
+    {
+      "path": "docs/experiments/0021-codex-exec-recovery-reporting.patch",
+      "sha256": "6d95c4edd727efd7806cbd1a2d5e4592b52b711ff6be356ca5fdf75b48cbc440"
     }
   ],
   "helper_sources": [

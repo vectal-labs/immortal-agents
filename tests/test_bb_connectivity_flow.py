@@ -161,8 +161,11 @@ class ConnectivityFlowTests(unittest.TestCase):
         now = datetime.now(timezone.utc).timestamp() * 1000 + 1000
         self.events.extend([
             {'type': 'client/turn/requested', 'createdAt': now, 'data': {
+                'requestId': 'retry-request',
                 'retryOfRequestId': retry['original_request_id'], 'retryAttempt': retry['attempt']}},
             {'type': 'turn/started', 'createdAt': now, 'scope': {'turnId': 'retry'}, 'data': {}},
+            {'type': 'turn/input/accepted', 'createdAt': now, 'scope': {'turnId': 'retry'},
+             'data': {'clientRequestId': 'retry-request'}},
         ])
         revive.outcomes.check(self.state, bb._thread_events)
         self.assertTrue(self.state['pending_revives'])
