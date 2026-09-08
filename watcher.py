@@ -9,8 +9,6 @@ import os
 import sys
 import time
 import traceback
-import urllib.error
-import urllib.request
 from datetime import datetime, timezone
 
 import revive
@@ -46,16 +44,9 @@ def probe():
     if simulated_outage_active():
         log("probe", online=False, simulated=True)
         return False
-    try:
-        req = urllib.request.Request(PROBE_URL, method="GET")
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            body = resp.read(256).decode("utf-8", "replace")
-            ok = resp.status == 200 and "Success" in body
-            log("probe", online=ok, http_status=resp.status, body=body[:80])
-            return ok
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        log("probe", online=False, error=str(exc))
-        return False
+    result = revive.ready.check_internet(PROBE_URL)
+    log("probe", **result)
+    return result["online"]
 
 
 def on_recovery(state, loss_at, recovery_at, duration):
@@ -111,12 +102,16 @@ def loop():
             state["last_probe_at"] = now_iso()
             save_state(state)
             if online:
-                for name, tick in (("recheck", revive.run_recheck), ("provider", revive.run_provider_check)):
-                    try:
-                        tick(state)
-                    except Exception as exc:
-                        log("recovery_tick_error", tick=name, error=str(exc))
-                save_state(state)
+                try:
+                    revive.run_recheck(state)
+                except Exception as exc:
+                    log("recovery_tick_error", tick="recheck", error=str(exc))
+            # BB has its own per-endpoint evidence. Apple cannot veto it.
+            try:
+                revive.run_provider_check(state)
+            except Exception as exc:
+                log("recovery_tick_error", tick="provider", error=str(exc))
+            save_state(state)
             if os.environ.get("WATCHER_ONCE"):
                 log("once_exit")
                 return

@@ -1,0 +1,176 @@
+[
+  {
+    "scope": {
+      "kind": "thread"
+    },
+    "threadId": "connection-fixture",
+    "seq": 23126,
+    "createdAt": 1788885495568,
+    "type": "client/turn/requested",
+    "data": {
+      "direction": "outbound",
+      "requestId": "creq_icj88mykwt",
+      "source": "tell",
+      "initiator": "user",
+      "senderThreadId": null,
+      "systemMessageKind": "unlabeled",
+      "systemMessageSubject": null,
+      "target": {
+        "kind": "new-turn"
+      },
+      "request": {
+        "method": "turn/start",
+        "params": {}
+      }
+    }
+  },
+  {
+    "scope": {
+      "kind": "turn",
+      "turnId": "dacb388d2c-t12"
+    },
+    "threadId": "connection-fixture",
+    "seq": 23127,
+    "createdAt": 1788885495604,
+    "type": "turn/started",
+    "data": {
+      "providerThreadId": "01a081e0-6e41-7b90-b926-b303964de4fd"
+    }
+  },
+  {
+    "scope": {
+      "kind": "turn",
+      "turnId": "dacb388d2c-t12"
+    },
+    "threadId": "connection-fixture",
+    "seq": 23128,
+    "createdAt": 1788885495604,
+    "type": "turn/input/accepted",
+    "data": {
+      "providerThreadId": "01a081e0-6e41-7b90-b926-b303964de4fd",
+      "clientRequestId": "creq_icj88mykwt"
+    }
+  },
+  {
+    "scope": {
+      "kind": "turn",
+      "turnId": "dacb388d2c-t12"
+    },
+    "threadId": "connection-fixture",
+    "seq": 23160,
+    "createdAt": 1788885768674,
+    "type": "provider/error",
+    "data": {
+      "providerThreadId": "01a081e0-6e41-7b90-b926-b303964de4fd",
+      "message": "Provider error",
+      "detail": "Reconnecting... 1/2\nstream disconnected before completion: IO error: websocket heartbeat timed out waiting for pong",
+      "willRetry": true,
+      "errorInfo": {
+        "category": "stream-disconnected",
+        "providerCode": "responseStreamDisconnected",
+        "httpStatusCode": null
+      }
+    }
+  },
+  {
+    "scope": {
+      "kind": "turn",
+      "turnId": "dacb388d2c-t12"
+    },
+    "threadId": "connection-fixture",
+    "seq": 23161,
+    "createdAt": 1788885769013,
+    "type": "provider/error",
+    "data": {
+      "providerThreadId": "01a081e0-6e41-7b90-b926-b303964de4fd",
+      "message": "Provider error",
+      "detail": "Reconnecting... 2/2\nstream disconnected before completion: failed to lookup address information: nodename nor servname provided, or not known",
+      "willRetry": true,
+      "errorInfo": {
+        "category": "stream-disconnected",
+        "providerCode": "responseStreamDisconnected",
+        "httpStatusCode": null
+      }
+    }
+  },
+  {
+    "scope": {
+      "kind": "turn",
+      "turnId": "dacb388d2c-t12"
+    },
+    "threadId": "connection-fixture",
+    "seq": 23163,
+    "createdAt": 1788885772467,
+    "type": "provider/error",
+    "data": {
+      "providerThreadId": "01a081e0-6e41-7b90-b926-b303964de4fd",
+      "message": "Provider error",
+      "detail": "Reconnecting... 1/2\nConnection failed: error sending request",
+      "willRetry": true,
+      "errorInfo": {
+        "category": "stream-disconnected",
+        "providerCode": "responseStreamDisconnected",
+        "httpStatusCode": null
+      }
+    }
+  },
+  {
+    "scope": {
+      "kind": "turn",
+      "turnId": "dacb388d2c-t12"
+    },
+    "threadId": "connection-fixture",
+    "seq": 23164,
+    "createdAt": 1788885775811,
+    "type": "provider/error",
+    "data": {
+      "providerThreadId": "01a081e0-6e41-7b90-b926-b303964de4fd",
+      "message": "Provider error",
+      "detail": "Reconnecting... 2/2\nConnection failed: error sending request",
+      "willRetry": true,
+      "errorInfo": {
+        "category": "stream-disconnected",
+        "providerCode": "responseStreamDisconnected",
+        "httpStatusCode": null
+      }
+    }
+  },
+  {
+    "scope": {
+      "kind": "turn",
+      "turnId": "dacb388d2c-t12"
+    },
+    "threadId": "connection-fixture",
+    "seq": 23165,
+    "createdAt": 1788885779251,
+    "type": "provider/error",
+    "data": {
+      "providerThreadId": "01a081e0-6e41-7b90-b926-b303964de4fd",
+      "message": "Provider error",
+      "detail": "Error running remote compact task: Connection failed: error sending request",
+      "willRetry": false,
+      "errorInfo": {
+        "category": "connection-failed",
+        "providerCode": "httpConnectionFailed",
+        "httpStatusCode": null
+      }
+    }
+  },
+  {
+    "scope": {
+      "kind": "turn",
+      "turnId": "dacb388d2c-t12"
+    },
+    "threadId": "connection-fixture",
+    "seq": 23166,
+    "createdAt": 1788885779258,
+    "type": "turn/completed",
+    "data": {
+      "providerThreadId": "01a081e0-6e41-7b90-b926-b303964de4fd",
+      "status": "failed",
+      "error": {
+        "message": "Error running remote compact task: Connection failed: error sending request"
+      }
+    }
+  }
+]

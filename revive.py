@@ -114,7 +114,8 @@ def _resume(state, host, target, harness, duration, mode, info, key):
     delivered(state, key, delivery)
     ok = True if delivery in ("sent", "queued") else None if delivery == "unknown" else False
     log("resume_sent", host=host.NAME, ref=ref, ok=ok, delivery=delivery)
-    trigger = "provider_outage" if mode == "provider" else None
+    trigger = ("network_outage" if bb_detect.is_network_error(info.get("error_detail"))
+               else "provider_outage") if mode == "provider" else None
     telemetry.send("revive_attempt", attempt_id=attempt_id, harness=harness,
                    host=host.NAME, result=ok, error=trigger or "network_outage")
     if delivery != "superseded":
@@ -145,9 +146,15 @@ def _recover_target(state, host, target, window, mode, duration):
     if host.NAME == "bb" and (target.get("submission") or target.get("interruption")):
         if mode != "provider":
             return 0
+        if state.get("online") is False:
+            return 0
         if target.get("interruption"):
             return bb_recovery.recover_interruption(state, target, parse_ts(window[1]), announce)
         return bb_recovery.recover(state, target, screen, parse_ts(window[1]), announce)
+    if host.NAME == "bb":
+        endpoint = host.recovery_endpoint(target)
+        if endpoint:
+            target = {**target, "recovery_endpoint": endpoint}
     name, reason = ((host.DETECTOR, "host_detector") if host.DETECTOR else
                     detect_harness(screen, target.get("title"), target.get("harness_hint")))
     harness = target.get("harness_hint") if host.DETECTOR else name
@@ -181,6 +188,17 @@ def _recover_target(state, host, target, window, mode, duration):
         target_identity=info.get("path") or f"{host.NAME}:{ref}",
     ):
         return 0
+    if target.get("recovery_endpoint"):
+        status = ready.check_endpoint(target["recovery_endpoint"])
+        if status != "reachable":
+            log("decision", host="bb", ref=ref, decision="wait", mode=mode,
+                reasons=[f"endpoint_{status}"])
+            return 0
+    elif host.NAME == "bb" and mode == "provider":
+        if state.get("online") is False or not ready.check():
+            log("decision", host="bb", ref=ref, decision="wait", mode=mode,
+                reasons=["endpoint_unknown", "legacy_connection_unavailable"])
+            return 0
     if target.get("bb_retry"):
         info["bb_retry"] = target["bb_retry"]
     # bb performs the fresh check inside its guarded host action.
@@ -292,6 +310,7 @@ def announce(host, harness, offline_secs, label, ok, detail=None, trigger=None):
 
 def run_provider_check(state):
     """Run the provider-mode pass when its polling interval has elapsed."""
+    ready.maintain_endpoints()
     try:
         discord_outbox.tick(state)
     except Exception:
@@ -304,7 +323,5 @@ def run_provider_check(state):
     state["provider_check_next_at"] = iso_after(now, PROVIDER_CHECK_SECS)
     outcomes.check(state, host_bb._thread_events, now)
     telemetry.heartbeat()
-    if not ready.check():
-        return
     stamp = now_iso(now)
     revive_pass(state, (stamp, stamp), "provider")

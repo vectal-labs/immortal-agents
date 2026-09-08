@@ -38,9 +38,10 @@ def evaluate(target, screen, window):
         return "skip", reasons + ["not_error_status"], info
     if screen is None or not error_at or not now:
         return "unknown", reasons + ["no_provider_error"], info
-    if is_network_error(screen):
+    network = is_network_error(screen)
+    if network and not target.get("recovery_endpoint"):
         return "skip", reasons + ["network_error_belongs_to_outage_path"], info
-    if not is_provider_outage(screen):
+    if not network and not is_provider_outage(screen):
         return "unknown", reasons + ["error_not_whitelisted"], info
     age = (now - error_at).total_seconds()
     reasons.append(f"age_secs={int(age)}")
@@ -48,4 +49,4 @@ def evaluate(target, screen, window):
         return "skip", reasons + ["error_too_old"], info
     if age < PROVIDER_RETRY_DELAY_SECS:
         return "wait", reasons + ["retry_delay"], info
-    return "resume", reasons + ["provider_outage"], info
+    return "resume", reasons + ["network_outage" if network else "provider_outage"], info

@@ -53,11 +53,11 @@ class SimulatedProbeTests(unittest.TestCase):
             (state_dir / "simulated_outage.json").write_text(json.dumps(flag))
 
             with self.watcher_paths(state_dir), mock.patch(
-                "watcher.urllib.request.urlopen"
-            ) as urlopen:
+                "watcher.revive.ready.check_internet"
+            ) as network_probe:
                 self.assertFalse(watcher.probe())
 
-            urlopen.assert_not_called()
+            network_probe.assert_not_called()
             row = json.loads((state_dir / "watcher.log").read_text().splitlines()[-1])
             self.assertEqual(row["event"], "probe")
             self.assertFalse(row["online"])
@@ -77,17 +77,12 @@ class SimulatedProbeTests(unittest.TestCase):
                     }
                 )
             )
-            response = mock.MagicMock()
-            response.status = 200
-            response.read.return_value = b"Success"
-
             with self.watcher_paths(state_dir), mock.patch(
-                "watcher.urllib.request.urlopen"
-            ) as urlopen:
-                urlopen.return_value.__enter__.return_value = response
+                "watcher.revive.ready.check_internet", return_value={"online": True}
+            ) as network_probe:
                 self.assertTrue(watcher.probe())
 
-            urlopen.assert_called_once()
+            network_probe.assert_called_once_with(watcher.PROBE_URL)
             self.assertFalse(flag_path.exists())
             events = [
                 json.loads(line)["event"]

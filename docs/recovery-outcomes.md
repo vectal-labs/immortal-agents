@@ -9,14 +9,40 @@ the three-attempt limit. A lost reply is `unknown`; it remains under observation
 without another blind send, including after a later outage. Fresh checks skip changed sessions, new work, queues,
 and pending approvals. bb uses its native request-guarded retry where available.
 
-An outage stays pending until DNS readiness succeeds and its first recovery pass
+The legacy outage path stays pending until DNS readiness succeeds and its first recovery pass
 completes. Pending work and attempts survive watcher restarts. Failed hosts and
 targets do not stop the remaining scan; the normal recheck window covers later
 attempts. DNS probes run in a bounded child process. Discord delivery runs in
 the background, without making recovery wait for HTTP requests.
 
+BB also scans final failures every 30 seconds independently of Apple's result.
+For an identified local provider endpoint, a connection failure aged 2–30 minutes
+can use the same guarded retry after an unauthenticated HTTPS HEAD probe succeeds.
+One provider cannot block another. A failed or unknown probe consumes no attempts.
+The endpoint check also guards the legacy BB outage path; Apple's recovery cannot
+override an unreachable provider. Unknown endpoints keep the existing outage policy.
+
+Codex routes come from BB's latest session ID, the local Codex session index,
+configuration, and auth mode. ChatGPT subscriptions use the Codex `/responses`
+route, not the public OpenAI API. Explicit Claude endpoints are supported; Pi,
+Cursor, remote machines, layered/ambiguous config, and explicit proxy routes do
+not receive an inferred endpoint. BB does not expose its complete inherited
+provider environment, so hidden launch overrides remain a limitation.
+
+HEAD responses 2xx, 400, 401, 404, and 405 demonstrate contact, not model readiness.
+Redirects and 403 remain unknown; 429, server errors, and connection failures defer
+recovery. Certificates are verified; redirects are not followed. Probes never
+send credentials, prompts, or inference requests. Explicit loopback APIs may use HTTP.
+Each endpoint worker expires after 15 seconds, even if its thread disappears.
+Results are cached for 45 seconds to span the 30-second scan; at most eight probes
+run concurrently. Apple's DNS and HTTP check has a six-second total deadline.
+
+Local logs distinguish `endpoint_probe` results and `endpoint_unknown` /
+`endpoint_unreachable` waiting decisions. Endpoint logs include only the host,
+status, and fixed reason; configuration and credentials are not logged.
+
 After delivery, the watcher checks for new assistant output in the same session
-every 30 seconds while online, for up to 10 minutes:
+every 30 seconds, including while Apple's check fails, for up to 10 minutes:
 
 - `revive_confirmed`: new assistant output was observed after the prompt.
 - `revive_unconfirmed`: no output was observed, the session could not be read,

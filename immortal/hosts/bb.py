@@ -13,6 +13,7 @@ import os
 import subprocess
 from copy import deepcopy
 from datetime import datetime, timezone
+from pathlib import Path
 
 from immortal.core.bb_runtime import DEFAULT_BB, BbRuntimeError, available as runtime_available, bb_cmd, run_bb
 from immortal.core.common import RESUME_TEXT
@@ -270,6 +271,7 @@ def list_targets():
                 "cwd": None,
                 "title": thread.get("title"),
                 "harness_hint": thread.get("providerId"),
+                "environment_host_id": thread.get("environmentHostId"),
                 # The detectors' death signal is status == "error". A dead
                 # Cursor thread is idle in bb, so the host reports the death.
                 "status": "error",
@@ -292,6 +294,18 @@ def list_targets():
 
 def read_screen(ref):
     return _ERRORS.get(ref, (None, None))[0]
+
+
+def recovery_endpoint(target):
+    """Resolve a route from session/config evidence, never the harness name alone."""
+    from immortal.core.provider_endpoint import recovery_endpoint as resolve
+    try:
+        local_host = (Path(os.environ.get("BB_DATA_DIR", Path.home() / ".bb")) / "host-id").read_text().strip()
+    except OSError:
+        return None
+    if not local_host or target.get("environment_host_id") != local_host:
+        return None  # This Mac's connection says nothing about a remote agent.
+    return resolve(target.get("harness_hint"), _thread_events(target["ref"]))
 
 
 def submission_ready(target):
