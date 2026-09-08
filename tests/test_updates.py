@@ -263,6 +263,8 @@ class UpdateCommandTests(unittest.TestCase):
             (self.state / name).write_text("preserve")
         self.real_restart = updater.restart_watcher
         self.restart = self.enterContext(mock.patch.object(updater, "restart_watcher"))
+        self.enterContext(mock.patch.object(updater, "process_id", return_value=os.getpid()))
+        self.restart.side_effect = lambda state, repo: updater.runtime.record(updater.runtime.identity(repo), state)
         self.feed = self.enterContext(mock.patch.object(updates, "fetch_feed", return_value=copy.deepcopy(FEED)))
         self.public = self.enterContext(mock.patch.object(updates, "published", return_value=True))
 
@@ -301,14 +303,14 @@ class UpdateCommandTests(unittest.TestCase):
         target = self.release()
         self.assertIn("restart confirmed", self.apply())
         self.assertEqual(self.git("rev-parse", "HEAD"), target)
-        self.restart.assert_called_once_with(self.state)
+        self.restart.assert_called_once_with(self.state, self.repo.resolve())
         for name in ("state.json", "telemetry", "discord_webhook"):
             self.assertEqual((self.state / name).read_text(), "preserve")
         self.assertFalse(updates.load_state(self.state)["restart_required"])
 
     def test_component_migration_runs_after_checkout_and_before_restart(self):
         target = self.release()
-        def restart(state_dir):
+        def restart(state_dir, repo):
             self.assertEqual(self.git("rev-parse", "HEAD"), target)
             self.assertTrue((self.home / "migration-completed").exists())
         self.restart.side_effect = restart
@@ -334,6 +336,64 @@ class UpdateCommandTests(unittest.TestCase):
         self.restart.reset_mock()
         self.assertIn("fixture components ready", self.apply())
         self.assertTrue((self.home / "migration-completed").exists())
+        self.restart.assert_not_called()
+
+    def test_same_version_update_restarts_when_running_record_is_missing(self):
+        self.release()
+        self.apply()
+        (self.state / "runtime.json").unlink()
+        self.restart.reset_mock()
+        self.apply()
+        self.restart.assert_called_once_with(self.state, self.repo.resolve())
+        self.assertFalse(updates.load_state(self.state)["restart_required"])
+
+    def test_ship_pushes_then_activates_the_exact_commit(self):
+        remote = self.tmp / "remote.git"
+        self.git("init", "--bare", "-b", "main", str(remote))
+        self.git("push", str(remote), "main")
+        (self.repo / "immortal/__init__.py").write_text('__version__ = "0.1.1"\n')
+        self.commit("ready to ship")
+        target = self.git("rev-parse", "HEAD")
+        real_git = updater.git
+
+        def remote_head(repo):
+            return real_git(remote, "rev-parse", "main")
+
+        def local_git(repo, *args):
+            if args[0] == "fetch":
+                return real_git(repo, "fetch", str(remote), "main:refs/remotes/origin/main")
+            if args[0] == "push":
+                self.assertEqual(args[2], target + ":refs/heads/main")
+                return real_git(repo, "push", str(remote), args[2])
+            return real_git(repo, *args)
+
+        def restart(state_dir, repo):
+            self.assertEqual(remote_head(repo), target)
+            updater.runtime.record(updater.runtime.identity(repo), state_dir)
+
+        self.restart.side_effect = restart
+        with mock.patch.object(updater, "git", side_effect=local_git), \
+                mock.patch.object(updater.runtime, "github_head", side_effect=remote_head):
+            result = updater.activate(self.repo, self.state, self.home, ship=True)
+        self.assertIn("Active: 0.1.1", result)
+        self.assertIn("pushed to GitHub", result)
+        self.restart.assert_called_once_with(self.state, self.repo)
+        self.assertEqual(updates.load_state(self.state)["installed_commit"], target)
+        self.assertFalse(updates.load_state(self.state)["restart_required"])
+
+    def test_local_restart_failure_stays_visibly_incomplete(self):
+        self.restart.side_effect = updates.UpdateError("startup failed")
+        with self.assertRaises(updates.UpdateError):
+            updater.activate(self.repo, self.state, self.home)
+        self.assertTrue(updates.load_state(self.state)["restart_required"])
+        self.assertEqual(self.git("rev-parse", "HEAD"), self.before)
+
+    def test_ship_refuses_local_changes_before_network_or_restart(self):
+        (self.repo / "untracked").write_text("mine")
+        with mock.patch.object(updater.runtime, "github_head") as remote:
+            with self.assertRaises(updates.UpdateError):
+                updater.activate(self.repo, self.state, self.home, ship=True)
+        remote.assert_not_called()
         self.restart.assert_not_called()
 
     def test_user_edit_during_migration_is_preserved_without_restart(self):

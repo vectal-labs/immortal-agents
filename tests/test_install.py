@@ -31,6 +31,7 @@ setup_cmux() { :; }
 setup_bb() { :; }
 setup_updates() { return "$INSTALL_TEST_UPDATE_STATUS"; }
 run_updates() { :; }
+runtime_status() { echo "runtime-pid:$1"; return "$INSTALL_TEST_RUNTIME_STATUS"; }
 run_codex_recovery() {
   echo "codex-component:$1"
   if [ "$1" = install ]; then return "$INSTALL_TEST_CODEX_STATUS"; fi
@@ -50,7 +51,7 @@ fi
 
 
 class InstallTests(unittest.TestCase):
-    def run_install(self, *, saved=None, args=(), status=0, answer="", terminal=False, update_status=0, codex_status=0):
+    def run_install(self, *, saved=None, args=(), status=0, answer="", terminal=False, update_status=0, codex_status=0, runtime_status=0):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "watcher.py").touch()
@@ -66,7 +67,7 @@ class InstallTests(unittest.TestCase):
             script.write_text(source + MOCKS + '\ncase "$VERB" in\n' + dispatch)
             env = dict(os.environ, INSTALL_TEST_DIR=tmp, INSTALL_TEST_STATUS=str(status),
                        INSTALL_TEST_TERMINAL=str(int(terminal)), INSTALL_TEST_UPDATE_STATUS=str(update_status),
-                       INSTALL_TEST_CODEX_STATUS=str(codex_status))
+                       INSTALL_TEST_CODEX_STATUS=str(codex_status), INSTALL_TEST_RUNTIME_STATUS=str(runtime_status))
             command = ["/bin/bash", str(script), *args]
             options = dict(env=env, capture_output=True, text=True, timeout=5,
                            start_new_session=True)
@@ -138,6 +139,17 @@ class InstallTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Optional telemetry: on", result.stdout)
         self.assertEqual(choice, "on")
+
+    def test_running_old_code_fails_status(self):
+        result, _ = self.run_install(args=("status",), runtime_status=1)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("runtime-pid:123", result.stdout)
+
+    def test_install_does_not_claim_success_for_unverified_code(self):
+        result, _ = self.run_install(runtime_status=1)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Running code was not verified", result.stdout)
+        self.assertNotIn("All set.", result.stdout)
 
     def test_unattended_reinstall_preserves_saved_choice(self):
         for saved in ("on", "off"):

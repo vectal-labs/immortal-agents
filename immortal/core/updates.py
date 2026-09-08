@@ -214,7 +214,7 @@ def check(repo=REPO, state_dir=STATE_DIR, now=None, force=False):
 def status(repo=REPO, state_dir=STATE_DIR):
     current = installed_version(repo)
     state = load_state(state_dir)
-    lines = ["Installed version: " + current]
+    lines = ["Checkout version: " + current]
     pending = state.get("available")
     if pending and version(pending["version"]) > version(current):
         lines += [f"Update available: {pending['version']} — {pending['summary']}",

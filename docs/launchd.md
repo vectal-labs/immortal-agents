@@ -32,16 +32,25 @@ immediately and survives reboots. It never uses `launchctl submit`
 Other verbs:
 
 ```bash
-./install.sh status      # loaded/running + last probe + bb access; exit 1 if the watcher is not running
+./install.sh status      # running version, checkout, GitHub main; exit 1 if local code is not verified active
+./install.sh restart     # restart committed local code and verify what the watcher loaded
+./install.sh ship        # push committed main, restart, and verify (maintainer command)
 ./install.sh check       # per-host Automation probe + bb access; exit 2 = skipped, 1 = denied or broken bb Node
 ./install.sh logs        # tail -f ~/.immortal-agents/watcher.log
 ./install.sh uninstall   # bootout + remove plist; keeps ~/.immortal-agents
 ```
 
-After updating `main` in the primary checkout, run `./install.sh` there again,
-then `./install.sh status`. This restarts the watcher with the updated code and
-keeps its recovery state. Editing files alone does not reload a running Python
-process. Test from the checkout with Python 3.11+:
+After updating `main` in the primary checkout, run `./install.sh restart`.
+For shipping, commit your reviewed changes and run `./install.sh ship` there.
+Both require a clean primary checkout and verify the new watcher's version,
+commit, and Python source fingerprint. `ship` refuses to push if main is behind
+GitHub. It does not create a release or tag. A push alone does not activate code.
+
+The watcher saves its identity once at startup in `~/.immortal-agents/runtime.json`.
+Status compares that record with the launchd PID and current files, so edits without
+a version bump are detected too. Older watchers without a record report unknown,
+never verified active. GitHub is checked live; offline checks explicitly say unknown.
+Recovery state is preserved. Test from the checkout with Python 3.11+:
 `python3 -m unittest discover -s tests`; tests isolate watcher state from live files.
 
 ## Update alerts and releases
@@ -75,8 +84,10 @@ the same release; use `notification-test` to verify repaired settings.
 It fetches the announced tag, verifies its commit and code version, and only
 fast-forwards. It never stashes, resets, merges local work, or changes remotes.
 It preserves the watcher plist, Node configuration, webhook, telemetry preference,
-and recovery state. Only the watcher is restarted; success requires a new PID and
-its startup log. If restart fails, the updated code stays in place and status tells
+and recovery state. Only the watcher is restarted; success requires a new PID,
+fresh startup log, and matching loaded version, commit, and source fingerprint.
+Updating an already-current checkout also repairs a stale running watcher.
+If restart fails, the updated code stays in place and status tells
 you to retry `./install.sh update`. Private/development checkouts use manual Git
 updates followed by `./install.sh` instead. The managed-Codex updater runs the
 new release's repeatable component migration before restarting the watcher and

@@ -402,6 +402,8 @@ sleep() { :; }
 setup_cmux() { :; }
 setup_updates() { :; }
 run_updates() { :; }
+# This fixture replaces launchd; loaded-code verification has real-process tests.
+runtime_status() { :; }
 launch_hosts() { :; }
 do_check() { probe_bb; }
 '''

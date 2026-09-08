@@ -11,6 +11,13 @@ import time
 import traceback
 from datetime import datetime, timezone
 
+from immortal import __version__
+from immortal.core import runtime
+
+# Capture before importing recovery code. A later checkout edit cannot change this.
+LOADED_CODE = runtime.identity()
+LOADED_CODE["version"] = __version__
+
 import revive
 from immortal.core.common import STATE_DIR, now_iso
 from immortal.core.logbook import load_state, log, save_state
@@ -123,6 +130,9 @@ def loop():
 if __name__ == "__main__":
     try:
         lock_fh = acquire_single_instance_lock()
+        if runtime.identity() != LOADED_CODE:
+            raise RuntimeError("Watcher source changed during startup; restart required")
+        runtime.record(LOADED_CODE)
         log("alive", pid=os.getpid(), ppid=os.getppid())
         loop()
     except Exception as exc:

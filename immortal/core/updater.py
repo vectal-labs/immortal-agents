@@ -1,3 +1,4 @@
+import argparse
 import json
 import os
 from pathlib import Path
@@ -7,7 +8,7 @@ import subprocess
 import sys
 import time
 
-from immortal.core import updates
+from immortal.core import runtime, updates
 from immortal.core.common import STATE_DIR, parse_ts
 
 WATCHER_LABEL = "com.immortal-agents.watcher"
@@ -80,7 +81,8 @@ def started(state_dir, pid, since):
     return False
 
 
-def restart_watcher(state_dir):
+def restart_watcher(state_dir, repo=updates.REPO):
+    expected = runtime.identity(repo)
     previous = process_id()
     since = time.time()
     updates.launchctl("kickstart", "-k", f"gui/{os.getuid()}/{WATCHER_LABEL}")
@@ -89,10 +91,41 @@ def restart_watcher(state_dir):
         pid = process_id()
         if pid and pid != previous and started(state_dir, pid, since):
             time.sleep(0.5)
-            if process_id() == pid:
+            loaded = runtime.read(state_dir, pid)
+            if (process_id() == pid and runtime.matches(loaded, expected)
+                    and isinstance(loaded.get("started_at"), (int, float))
+                    and loaded["started_at"] >= since
+                    and runtime.identity(repo) == expected):
                 return
         time.sleep(0.25)
-    raise updates.UpdateError("Code updated, but watcher startup was not confirmed. Run ./install.sh update again or inspect watcher logs")
+    raise updates.UpdateError("Running code was not verified. Run ./install.sh restart or inspect watcher logs")
+
+
+def activate(repo=updates.REPO, state_dir=STATE_DIR, home=None, *, ship=False):
+    """Activate a committed local checkout; optionally push it first."""
+    target = check_checkout(repo)
+    watcher_config(repo, state_dir, home)
+    with updates.locked(state_dir):
+        check_unchanged(repo, target)
+        if ship:
+            git(repo, "fetch", "origin", "main")
+            git(repo, "merge-base", "--is-ancestor", "origin/main", target)
+            check_unchanged(repo, target)
+            git(repo, "push", "origin", target + ":refs/heads/main")
+            if runtime.github_head(repo) != target:
+                raise updates.UpdateError("GitHub main differs from the intended commit; activation not confirmed")
+        state = updates.load_state(state_dir)
+        state["restart_required"] = True
+        updates.save_state(state_dir, state)
+        check_unchanged(repo, target)
+        restart_watcher(state_dir, repo)
+        check_unchanged(repo, target)
+        state["restart_required"] = False
+        state["installed_commit"] = target
+        state["installed_at"] = time.time()
+        updates.save_state(state_dir, state)
+        return f"Active: {updates.installed_version(repo)} ({target[:12]}); running code verified" + (
+            "; pushed to GitHub" if ship else "")
 
 
 
@@ -149,11 +182,23 @@ def apply(repo=updates.REPO, state_dir=STATE_DIR, home=None):
             raise updates.UpdateError("No public release has been announced yet")
         release = releases[0]
         current = updates.version(updates.installed_version(repo))
-        if updates.version(release["version"]) <= current and not state.get("restart_required"):
+        if updates.version(release["version"]) <= current:
             component = migrate_components(repo, state_dir, state, home, expected_commit=before)
-            return "Already at or ahead of the latest public release" + ("; " + component if component else "")
-        if updates.version(release["version"]) < current:
-            raise updates.UpdateError("Refusing to downgrade this checkout")
+            if state.get("restart_required") or not runtime.matches(
+                    runtime.read(state_dir, process_id()), runtime.identity(repo)):
+                state["restart_required"] = True
+                updates.save_state(state_dir, state)
+                check_unchanged(repo, before)
+                restart_watcher(state_dir, repo)
+                check_unchanged(repo, before)
+                state["restart_required"] = False
+                state["installed_commit"] = before
+                state["installed_at"] = time.time()
+                updates.save_state(state_dir, state)
+            if state.get("available") and updates.version(state["available"]["version"]) <= current:
+                state["available"] = None
+                updates.save_state(state_dir, state)
+            return "Already at or ahead of the latest public release; watcher confirmed active" + ("; " + component if component else "")
         if not updates.published(release):
             raise updates.UpdateError("The public release is not available; nothing was changed")
         git(repo, "fetch", "--no-tags", "origin", "refs/tags/v" + release["version"])
@@ -190,7 +235,8 @@ def apply(repo=updates.REPO, state_dir=STATE_DIR, home=None):
             state["migration_required"] = True
             updates.save_state(state_dir, state)
             raise
-        restart_watcher(state_dir)
+        restart_watcher(state_dir, repo)
+        check_unchanged(repo, target)
         state["restart_required"] = False
         state["installed_commit"] = target
         state["installed_at"] = time.time()
@@ -202,8 +248,13 @@ def apply(repo=updates.REPO, state_dir=STATE_DIR, home=None):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--restart", action="store_true")
+    mode.add_argument("--ship", action="store_true")
+    args = parser.parse_args()
     try:
-        print(apply())
+        print(activate(ship=args.ship) if args.restart or args.ship else apply())
     except (updates.UpdateError, OSError, ValueError, subprocess.SubprocessError) as exc:
         print("Update failed: " + str(exc), file=sys.stderr)
         return 1

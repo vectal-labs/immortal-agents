@@ -32,7 +32,7 @@ TELEMETRY=""
 CODEX_RECOVERY=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    install|uninstall|status|logs|check|check-codex|update|notification-test|discord-retry|rollback-codex) VERB="$1" ;;
+    install|uninstall|status|logs|check|check-codex|update|restart|ship|notification-test|discord-retry|rollback-codex) VERB="$1" ;;
     --discord)
       [ $# -ge 2 ] || { echo "error: --discord needs a webhook URL" >&2; exit 1; }
       DISCORD_URL="$2"; shift ;;
@@ -42,6 +42,8 @@ while [ $# -gt 0 ]; do
     -h|--help)
       sed -n '2,4p' "$0"
       echo "  update              update the watcher and opted-in Codex recovery component"
+      echo "  restart             restart and verify the committed local watcher code"
+      echo "  ship                push committed main, restart, and verify the running code"
       echo "  --codex-recovery    enable the managed Codex build (explicit one-time opt-in)"
       echo "  rollback-codex      restore the previous Codex selection"
       echo "  check-codex         verify shell, BB and running Codex selection"
@@ -128,7 +130,14 @@ setup_updates() { run_updates setup --python "$1"; }
 remove_updates() { run_updates remove; }
 do_update() {
   (cd "$REPO_DIR" && WATCHER_STATE_DIR="$STATE_DIR" PYTHONDONTWRITEBYTECODE=1 \
-    "$(find_python3)" -m immortal.core.updater)
+    "$(find_python3)" -m immortal.core.updater "$@")
+}
+
+runtime_status() {
+  local runtime_pid="${1:-0}"
+  shift
+  (cd "$REPO_DIR" && WATCHER_STATE_DIR="$STATE_DIR" PYTHONDONTWRITEBYTECODE=1 \
+    "$(find_python3)" -m immortal.core.runtime --repo "$REPO_DIR" --pid "$runtime_pid" "$@")
 }
 
 # The plist's python3 when installed, else PATH's. TCC grants attach to the
@@ -297,6 +306,7 @@ do_status() {
   fi
   probe_bb || true
   if [ "$VERB" = status ]; then
+    runtime_status "${pid:-0}" || rc=1
     (cd "$REPO_DIR" && WATCHER_STATE_DIR="$STATE_DIR" python3 -m immortal.core.discord_outbox) || true
     run_updates status || true
     run_codex_recovery status || true
@@ -375,10 +385,18 @@ PLIST
 
   bootout_watcher
   launchctl bootstrap "$DOMAIN" "$PLIST"
-  # The watcher probes on start; give the first log line a moment to land.
-  local i; for i in 1 2 3 4 5; do [ -s "$STATE_DIR/watcher.log" ] && break; sleep 1; done
+  # An old log file cannot prove that this newly bootstrapped process loaded our code.
+  local i startup_pid="" runtime_rc=1
+  for i in 1 2 3 4 5; do
+    startup_pid="$(launchctl print "$DOMAIN/$LABEL" 2>/dev/null | awk '/^\tpid = /{print $3}' || true)"
+    if runtime_status "${startup_pid:-0}" --local >/dev/null; then runtime_rc=0; break; fi
+    sleep 1
+  done
   local status_rc=0 check_rc=0
   do_status || status_rc=$?
+  if [ "$runtime_rc" -ne 0 ]; then
+    bad "Running code was not verified. Run ./install.sh status"; status_rc=1
+  fi
   echo
   setup_cmux || true
   launch_hosts
@@ -460,6 +478,8 @@ case "$VERB" in
   logs) do_logs ;;
   check) do_check ;;
   update) do_update ;;
+  restart) do_update --restart ;;
+  ship) do_update --ship ;;
   notification-test) run_updates notification-test ;;
   discord-retry) (cd "$REPO_DIR" && WATCHER_STATE_DIR="$STATE_DIR" python3 -m immortal.core.discord_outbox --retry) ;;
 esac
