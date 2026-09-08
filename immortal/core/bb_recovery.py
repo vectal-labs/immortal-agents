@@ -48,7 +48,8 @@ def recover_interruption(state, target, now, announce):
     except (bb.BbUnavailable, bb.subprocess.TimeoutExpired, OSError, ValueError, KeyError):
         decision("interruption_status_unavailable")
         return 0
-    info = {"bb_retry": {"original_request_id": failure["original_request_id"],
+    info = {"label": target.get("title") or ref,
+            "bb_retry": {"original_request_id": failure["original_request_id"],
                          "attempt": failure["attempt"] + 1},
             "bb_interruption": {"label": target.get("title") or ref}}
     attempt_id = outcomes.track(state, "bb", ref, target.get("harness_hint"), info, bb._thread_events)
@@ -128,7 +129,8 @@ def recover(state, target, detail, now, announce):
     # Reserve before dispatch: process crashes must not reset the retry budget.
     entry.update(tries=entry["tries"] + 1, at=now_iso(now), attempted_error=signature,
                  delivery="unknown")
-    info = {"error_at": target["error_at"], "error_detail": detail,
+    info = {"label": target.get("title") or ref,
+            "error_at": target["error_at"], "error_detail": detail,
             "bb_retry": {"original_request_id": failure["original_request_id"],
                          "attempt": failure["attempt"] + 1}}
     attempt_id = outcomes.track(state, "bb", ref, target.get("harness_hint"), info, bb._thread_events)

@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import queue
 import threading
 import time
+import urllib.error
+import urllib.parse
 import urllib.request
+from dataclasses import dataclass
 
 from immortal.core.common import STATE_DIR
 
@@ -26,6 +30,19 @@ MAX_PENDING_NOTIFICATIONS = 32
 _notifications = queue.Queue(maxsize=MAX_PENDING_NOTIFICATIONS)
 _worker = None
 _worker_lock = threading.Lock()
+_http_lock = threading.Lock()
+_rate_limit_until = 0
+
+
+@dataclass(frozen=True)
+class Delivery:
+    message_id: str | None = None
+    error: str | None = None
+    retry_after: float = 0
+    permanent: bool = False
+
+    def __bool__(self):
+        return self.message_id is not None
 
 
 def webhook_url():
@@ -54,6 +71,8 @@ def revive_message(host, harness, offline_secs, label, ok, detail=None, trigger=
     status = "Resume status unknown" if ok is None else ("Resume sent" if ok else "Revive FAILED")
     if trigger == "unhandled_provider_error":
         text = f"Unhandled provider error: {name} in {host}"
+    elif trigger == "recovery_confirmed":
+        text = f"Recovery confirmed: {name} in {host}"
     elif trigger and trigger.startswith("bb_daemon_"):
         status = {"bb_daemon_resume_queued": "Resume queued",
                   "bb_daemon_recovery_confirmed": "Recovery confirmed",
@@ -73,25 +92,77 @@ def revive_message(host, harness, offline_secs, label, ok, detail=None, trigger=
     return text
 
 
-def post(url, text):
+def _retry_after(exc):
     try:
-        body = json.dumps({"content": text[:1900]}).encode()
+        data = json.loads(exc.read(8192))
+        value = data.get("retry_after") if isinstance(data, dict) else None
+    except Exception:
+        value = None
+    header = exc.headers.get("Retry-After") if exc.headers else None
+    for candidate in (value, header):
+        try:
+            seconds = float(candidate)
+            if math.isfinite(seconds):
+                return max(0.1, seconds)
+        except (TypeError, ValueError):
+            pass
+    return 5
+
+
+def post(url, text):
+    """Require Discord's message acknowledgement; return only safe error codes."""
+    global _rate_limit_until
+    try:
+        try:
+            parts = urllib.parse.urlsplit(url)
+        except ValueError:
+            return Delivery(error="invalid_webhook", permanent=True)
+        if parts.scheme not in ("http", "https") or not parts.netloc:
+            return Delivery(error="invalid_webhook", permanent=True)
+        query = [(key, value) for key, value in urllib.parse.parse_qsl(parts.query)
+                 if key != "wait"]
+        url = urllib.parse.urlunsplit(parts._replace(
+            query=urllib.parse.urlencode([*query, ("wait", "true")]), fragment=""))
+        body = json.dumps({"content": text[:1900], "allowed_mentions": {"parse": []}}).encode()
         req = urllib.request.Request(
             url, data=body, headers={"Content-Type": "application/json", "User-Agent": "immortal-agents"}
         )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return 200 <= resp.status < 300
+        # Both notification workers share the same webhook rate limit.
+        with _http_lock:
+            delay = _rate_limit_until - time.monotonic()
+            if delay > 0:
+                time.sleep(delay)
+            try:
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    data = json.loads(resp.read(65536))
+                    message_id = data.get("id") if isinstance(data, dict) else None
+                    if 200 <= resp.status < 300 and isinstance(message_id, str) and message_id.isdigit():
+                        return Delivery(message_id=message_id)
+                    return Delivery(error="missing_message_ack")
+            except urllib.error.HTTPError as exc:
+                try:
+                    if exc.code == 429:
+                        delay = _retry_after(exc)
+                        _rate_limit_until = time.monotonic() + delay
+                        return Delivery(error="http_429", retry_after=delay)
+                    return Delivery(error=f"http_{exc.code}", permanent=400 <= exc.code < 500
+                                    and exc.code not in (408, 425))
+                finally:
+                    exc.close()
+    except (ValueError, UnicodeError):
+        return Delivery(error="invalid_response")
     except Exception:
-        return False
+        return Delivery(error="request_failed")
 
 
 def _send_url(url, text, sleep):
     for delay in (*RETRY_DELAYS, None):
-        if post(url, text):
+        result = post(url, text)
+        if result:
             return True
-        if delay is None:
+        if delay is None or isinstance(result, Delivery) and result.permanent:
             return False
-        sleep(delay)
+        sleep(max(delay, result.retry_after if isinstance(result, Delivery) else 0))
 
 
 def send(text, sleep=time.sleep):

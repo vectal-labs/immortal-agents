@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from immortal.core import telemetry, notify
+from immortal.core import telemetry, notify, discord_outbox
 from immortal.core.common import now_iso, parse_ts
 from immortal.core.logbook import log, save_state
 
@@ -33,6 +33,8 @@ def track(state, host, ref, harness, info, bb_events=None):
         if len(sessions) == 1:
             path = sessions[0].get("path")
     attempt = {"host": host, "ref": ref, "harness": harness, "sent_at": sent_at}
+    attempt["label"] = info.get("label") or ref
+    attempt["discord_enabled"] = bool(notify.webhook_url())
     if info.get("bb_retry"):
         attempt["bb_retry"] = info["bb_retry"]
     if info.get("bb_interruption"):
@@ -140,14 +142,17 @@ def _finish(state, attempt_id, attempt, at, reason, now):
     fields = dict(attempt_id=attempt_id, host=attempt.get("host"), harness=attempt.get("harness"),
                   reason="assistant_output" if at else reason,
                   elapsed_secs=round(((at or now) - parse_ts(attempt["sent_at"])).total_seconds(), 1))
+    if at and (attempt.get("discord_enabled") or notify.webhook_url()):
+        discord_outbox.stage(state, attempt_id, attempt.get("host"), attempt.get("harness"),
+                             attempt.get("label") or attempt.get("bb_interruption", {}).get("label")
+                             or attempt.get("ref"))
+    cancel(state, attempt_id)
+    save_state(state)
     log(event, **fields)
     telemetry.send(event, **fields)
-    cancel(state, attempt_id)
-    if attempt.get("bb_interruption"):
-        save_state(state)
+    if not at and attempt.get("bb_interruption"):
         notify.notify_revive("bb", attempt.get("harness"), 0, attempt["bb_interruption"]["label"], bool(at),
-                             detail=fields["reason"], trigger=("bb_daemon_recovery_confirmed" if at
-                                                              else "bb_daemon_recovery_unconfirmed"))
+                             detail=fields["reason"], trigger="bb_daemon_recovery_unconfirmed")
 
 
 def check(state, bb_events, now=None):

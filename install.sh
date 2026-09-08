@@ -31,7 +31,7 @@ DISCORD_URL=""
 TELEMETRY=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    install|uninstall|status|logs|check|update|notification-test) VERB="$1" ;;
+    install|uninstall|status|logs|check|update|notification-test|discord-retry) VERB="$1" ;;
     --discord)
       [ $# -ge 2 ] || { echo "error: --discord needs a webhook URL" >&2; exit 1; }
       DISCORD_URL="$2"; shift ;;
@@ -41,6 +41,7 @@ while [ $# -gt 0 ]; do
       sed -n '2,4p' "$0"
       echo "  update              install the latest public release and restart only the watcher"
       echo "  notification-test   request a test notification from the update LaunchAgent"
+      echo "  discord-retry       retry saved success alerts after fixing the webhook"
       exit 0 ;;
     *) echo "error: unknown argument: $1" >&2; exit 1 ;;
   esac
@@ -282,6 +283,7 @@ do_status() {
   fi
   probe_bb || true
   if [ "$VERB" = status ]; then
+    (cd "$REPO_DIR" && WATCHER_STATE_DIR="$STATE_DIR" python3 -m immortal.core.discord_outbox) || true
     run_updates status || true
     loaded "com.immortal-agents.updates" || warn "Update checker is not loaded. Run ./install.sh"
   fi
@@ -435,4 +437,5 @@ case "$VERB" in
   check) do_check ;;
   update) do_update ;;
   notification-test) run_updates notification-test ;;
+  discord-retry) (cd "$REPO_DIR" && WATCHER_STATE_DIR="$STATE_DIR" python3 -m immortal.core.discord_outbox --retry) ;;
 esac

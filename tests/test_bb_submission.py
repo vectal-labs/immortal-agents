@@ -30,6 +30,7 @@ class DaemonRestartTests(unittest.TestCase):
         self.enterContext(mock.patch.object(logbook, "LOG_PATH", self.tmp / "watcher.log"))
         self.enterContext(mock.patch.object(logbook, "STATE_DIR", self.tmp))
         self.notice = self.enterContext(mock.patch.object(outcomes.notify, "notify_revive"))
+        self.enterContext(mock.patch.object(outcomes.notify, "webhook_url", return_value="https://example.invalid/hook"))
         self.enterContext(mock.patch.object(host, "_LOG_CACHE", {}))
         self.enterContext(mock.patch.object(host, "available", return_value=True))
         self.enterContext(mock.patch.object(outcomes.telemetry, "send"))
@@ -250,8 +251,10 @@ class DaemonRestartTests(unittest.TestCase):
         outcomes.check(self.state, host._thread_events, RESTART_AT + timedelta(seconds=60))
         self.state = logbook.load_state()
         outcomes.check(self.state, host._thread_events, RESTART_AT + timedelta(seconds=90))
-        self.notice.assert_called_once()
-        self.assertEqual(self.notice.call_args.kwargs["trigger"], "bb_daemon_recovery_confirmed")
+        self.notice.assert_not_called()
+        alerts = logbook.load_state()["discord_outbox"]
+        self.assertEqual(len(alerts), 1)
+        self.assertIn('Recovery confirmed: Codex in bb', next(iter(alerts.values()))['text'])
         self.command.assert_called_once()
 
     def test_status_read_failure_defers_without_reserving_an_attempt(self):
@@ -390,6 +393,28 @@ class RecoveryPolicyTests(unittest.TestCase):
         self.retry.assert_not_called()
         self.assertEqual(self.run_at(30), 1)
         self.retry.assert_called_once_with(self.target, reset=False)
+
+    def test_submission_retry_then_matching_output_saves_success_alert(self):
+        sent = ERROR_AT + timedelta(seconds=30)
+        with mock.patch.object(outcomes, 'now_iso', return_value=sent.isoformat()), mock.patch.object(
+            outcomes.notify, 'webhook_url', return_value='https://example.invalid/hook'
+        ):
+            self.assertEqual(self.run_at(30), 1)
+            self.assertFalse(self.state.get('discord_outbox'))
+            events = [
+                {'type': 'client/turn/requested', 'data': {'requestId': 'retry',
+                    'retryOfRequestId': REQUEST, 'retryAttempt': self.target['submission']['attempt'] + 1}},
+                {'type': 'turn/started', 'scope': {'turnId': 'retry-turn'}},
+                {'type': 'item/completed', 'createdAt': (sent.timestamp() + 5) * 1000,
+                 'scope': {'turnId': 'retry-turn'},
+                 'data': {'item': {'type': 'agentMessage', 'text': 'Back to work'}}},
+            ]
+            outcomes.check(self.state, lambda _: events, sent + timedelta(seconds=10))
+            outcomes.check(self.state, lambda _: events, sent + timedelta(seconds=20))
+        saved = logbook.load_state()
+        self.assertEqual(saved['pending_revives'], {})
+        self.assertEqual(len(saved['discord_outbox']), 1)
+        self.assertIn('Recovery confirmed: Codex in bb · "test"', next(iter(saved['discord_outbox'].values()))['text'])
 
     def test_three_attempts_backoff_reset_once_then_one_alert(self):
         self.run_at(30)

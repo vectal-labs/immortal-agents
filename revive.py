@@ -16,6 +16,7 @@ from immortal.hosts import cmux as host_cmux
 from immortal.hosts import ghostty as host_ghostty
 from immortal.hosts import terminal as host_terminal
 from immortal.core import notify
+from immortal.core import discord_outbox
 from immortal.core import outcomes
 from immortal.core import bb_recovery
 from immortal.core import ready
@@ -83,7 +84,8 @@ def _signature(info, target):
 
 def _resume(state, host, target, harness, duration, mode, info, key):
     ref = target["ref"]
-    attempt_id = outcomes.track(state, host.NAME, ref, harness, info, host_bb._thread_events)
+    observation = {**info, "label": target.get("title") or target.get("cwd") or ref}
+    attempt_id = outcomes.track(state, host.NAME, ref, harness, observation, host_bb._thread_events)
     # Observation and reservation must both survive a crash after host acceptance.
     previous = state.setdefault("revived", {}).get(key)
     try:
@@ -285,11 +287,16 @@ def run_recheck(state):
 def announce(host, harness, offline_secs, label, ok, detail=None, trigger=None):
     """Discord ping per revive attempt. Failure to notify never blocks recovery."""
     sent = notify.notify_revive(host, harness, offline_secs, label, ok, detail, trigger)
-    log("notify", host=host, harness=harness, ok=ok, sent=sent)
+    log("notify", host=host, harness=harness, ok=ok, queued=sent)
 
 
 def run_provider_check(state):
     """Run the provider-mode pass when its polling interval has elapsed."""
+    try:
+        discord_outbox.tick(state)
+    except Exception:
+        # The saved alert remains pending even if disk or worker startup fails.
+        log("discord_delivery_error", reason="outbox_tick_failed")
     now = datetime.now(timezone.utc)
     next_at = state.get("provider_check_next_at")
     if next_at and now < parse_ts(next_at):

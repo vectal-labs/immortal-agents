@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import io
 import threading
 import unittest
 from unittest import mock
@@ -51,7 +52,8 @@ class MessageTests(unittest.TestCase):
 
     def test_send_posts_json_content(self):
         resp = mock.MagicMock()
-        resp.status = 204
+        resp.status = 200
+        resp.read.return_value = b'{"id":"123456789"}'
         with mock.patch.object(notify, "webhook_url", return_value="https://x/hook"), mock.patch(
             "immortal.core.notify.urllib.request.urlopen"
         ) as urlopen:
@@ -59,6 +61,7 @@ class MessageTests(unittest.TestCase):
             self.assertTrue(notify.send("hello"))
         req = urlopen.call_args.args[0]
         self.assertEqual(json.loads(req.data)["content"], "hello")
+        self.assertIn("wait=true", req.full_url)
 
     def test_network_error_never_raises_and_retries(self):
         sleep = mock.Mock()
@@ -72,7 +75,8 @@ class MessageTests(unittest.TestCase):
     def test_send_succeeds_on_a_retry(self):
         # Experiment 0009: stale DNS right after reconnect; the second try lands.
         resp = mock.MagicMock()
-        resp.status = 204
+        resp.status = 200
+        resp.read.return_value = b'{"id":"123456789"}'
         ok = mock.MagicMock()
         ok.__enter__.return_value = resp
         with mock.patch.object(notify, "webhook_url", return_value="https://x/hook"), mock.patch(
@@ -102,6 +106,39 @@ class MessageTests(unittest.TestCase):
         with mock.patch.object(notify, "webhook_url", side_effect=RuntimeError("webhook error")):
             self.assertFalse(notify.send("hello"))
             self.assertFalse(notify.notify_revive("bb", "codex", 0, None, True))
+
+
+class TransportTests(unittest.TestCase):
+    def test_rate_limit_uses_header_even_with_malformed_body(self):
+        for body in (b'null', b'[]', b'broken JSON', b'{"retry_after":"invalid"}',
+                     b'{"retry_after":null}', b'{"retry_after":1e999}'):
+            with self.subTest(body=body):
+                error = notify.urllib.error.HTTPError('https://example.invalid/hook', 429, 'limited',
+                                                     {'Retry-After': '120.25'}, io.BytesIO(body))
+                with mock.patch.object(notify, '_rate_limit_until', 0), mock.patch.object(
+                    notify.urllib.request, 'urlopen', side_effect=error
+                ):
+                    result = notify.post('https://example.invalid/hook', 'hello')
+                self.assertFalse(result)
+                self.assertEqual(result.error, 'http_429')
+                self.assertEqual(result.retry_after, 120.25)
+
+    def test_malformed_webhook_is_permanent_and_does_not_make_a_request(self):
+        with mock.patch.object(notify.urllib.request, 'urlopen') as request:
+            result = notify.post('https://[broken', 'hello')
+        self.assertTrue(result.permanent)
+        self.assertEqual(result.error, 'invalid_webhook')
+        request.assert_not_called()
+
+    def test_existing_wait_parameter_is_replaced_without_losing_thread(self):
+        response = mock.MagicMock(status=200)
+        response.read.return_value = b'{"id":"123456789"}'
+        with mock.patch.object(notify.urllib.request, 'urlopen') as request:
+            request.return_value.__enter__.return_value = response
+            result = notify.post('https://example.invalid/hook?wait=false&thread_id=42', 'hello')
+        self.assertTrue(result)
+        query = notify.urllib.parse.parse_qs(notify.urllib.parse.urlsplit(request.call_args.args[0].full_url).query)
+        self.assertEqual(query, {'wait': ['true'], 'thread_id': ['42']})
 
 
 class NotificationQueueTests(unittest.TestCase):

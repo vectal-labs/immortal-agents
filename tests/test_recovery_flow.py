@@ -79,6 +79,32 @@ class RecoveryFlowTests(unittest.TestCase):
         with self.assertRaises(KeyboardInterrupt):
             revive.revive_pass({}, (self.loss, self.now.isoformat()), 'first')
 
+    def test_revival_then_assistant_output_saves_named_discord_success(self):
+        session = self.root / 'session.jsonl'
+        session.touch()
+        self.info['path'] = str(session)
+        self.target['title'] = 'Recover my project'
+        state = {}
+        with mock.patch.object(revive.notify, 'webhook_url', return_value='https://example.invalid/hook'):
+            self.assertEqual(revive.revive_pass(state, (self.loss, self.now.isoformat()), 'first'), 1)
+            self.assertFalse(state.get('discord_outbox'))
+            stamp = self.now + timedelta(seconds=30)
+            session.write_text(json.dumps({'type': 'assistant', 'timestamp': stamp.isoformat(),
+                'message': {'content': [{'type': 'text', 'text': 'Resumed work'}]}}) + '\n')
+            outcomes.check(state, mock.Mock(), stamp + timedelta(seconds=1))
+        saved = logbook.load_state()
+        self.assertEqual(saved['pending_revives'], {})
+        self.assertEqual(len(saved['discord_outbox']), 1)
+        self.assertIn('"Recover my project"', next(iter(saved['discord_outbox'].values()))['text'])
+
+    def test_notification_label_does_not_change_recovery_deduplication(self):
+        self.info.pop('api_error_ts')
+        state = {}
+        window = (self.loss, self.now.isoformat())
+        revive.revive_pass(state, window, 'first')
+        revive.revive_pass(state, window, 'recheck')
+        self.host.resume.assert_called_once()
+
     def test_unknown_delivery_is_not_repeated_after_restart(self):
         self.host.resume.return_value = 'unknown'
         state = {}
