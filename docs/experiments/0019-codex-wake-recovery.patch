@@ -1,0 +1,907 @@
+diff --git a/codex-rs/codex-api/src/endpoint/mod.rs b/codex-rs/codex-api/src/endpoint/mod.rs
+index e9f08d2753..5c2c2cb133 100644
+--- a/codex-rs/codex-api/src/endpoint/mod.rs
++++ b/codex-rs/codex-api/src/endpoint/mod.rs
+@@ -6,6 +6,7 @@ pub(crate) mod realtime_call;
+ pub(crate) mod realtime_websocket;
+ pub(crate) mod responses;
+ pub(crate) mod responses_websocket;
++mod responses_websocket_stream;
+ pub(crate) mod search;
+ mod session;
+ 
+diff --git a/codex-rs/codex-api/src/endpoint/responses_websocket.rs b/codex-rs/codex-api/src/endpoint/responses_websocket.rs
+index 95d41e0d91..1b1892ce3e 100644
+--- a/codex-rs/codex-api/src/endpoint/responses_websocket.rs
++++ b/codex-rs/codex-api/src/endpoint/responses_websocket.rs
+@@ -5,6 +5,7 @@ use crate::common::ResponsesWsRequest;
+ use crate::common::SafetyBufferingTreatment;
+ use crate::common::WS_REQUEST_HEADER_TRACEPARENT_CLIENT_METADATA_KEY;
+ use crate::endpoint::responses::ResponsesEndpoint;
++use crate::endpoint::responses_websocket_stream::WsStream;
+ use crate::error::ApiError;
+ use crate::provider::Provider;
+ use crate::rate_limits::parse_rate_limit_event;
+@@ -14,10 +15,7 @@ use crate::sse::process_responses_event;
+ use crate::telemetry::WebsocketTelemetry;
+ use codex_client::TransportError;
+ use codex_http_client::HttpClientFactory;
+-use codex_websocket_client::WebSocketConnection;
+ use codex_websocket_client::WebSocketConnector;
+-use futures::SinkExt;
+-use futures::StreamExt;
+ use http::HeaderMap;
+ use http::HeaderName;
+ use http::HeaderValue;
+@@ -30,7 +28,6 @@ use std::sync::OnceLock;
+ use std::time::Duration;
+ use tokio::sync::Mutex;
+ use tokio::sync::mpsc;
+-use tokio::sync::oneshot;
+ use tokio::time::Instant;
+ use tokio_tungstenite::tungstenite::Error as WsError;
+ use tokio_tungstenite::tungstenite::Message;
+@@ -47,111 +44,6 @@ use tungstenite::extensions::compression::deflate::DeflateConfig;
+ use tungstenite::protocol::WebSocketConfig;
+ use url::Url;
+ 
+-struct WsStream {
+-    tx_command: mpsc::Sender<WsCommand>,
+-    rx_message: mpsc::UnboundedReceiver<Result<Message, WsError>>,
+-    pump_task: tokio::task::JoinHandle<()>,
+-}
+-
+-enum WsCommand {
+-    Send {
+-        message: Message,
+-        tx_result: oneshot::Sender<Result<(), WsError>>,
+-    },
+-}
+-
+-impl WsStream {
+-    fn new(inner: WebSocketConnection) -> Self {
+-        let (tx_command, mut rx_command) = mpsc::channel::<WsCommand>(32);
+-        let (tx_message, rx_message) = mpsc::unbounded_channel::<Result<Message, WsError>>();
+-
+-        let pump_task = tokio::spawn(async move {
+-            let mut inner = inner;
+-            loop {
+-                tokio::select! {
+-                    command = rx_command.recv() => {
+-                        let Some(command) = command else {
+-                            break;
+-                        };
+-                        match command {
+-                            WsCommand::Send { message, tx_result } => {
+-                                let result = inner.send(message).await;
+-                                let should_break = result.is_err();
+-                                let _ = tx_result.send(result);
+-                                if should_break {
+-                                    break;
+-                                }
+-                            }
+-                        }
+-                    }
+-                    message = inner.next() => {
+-                        let Some(message) = message else {
+-                            break;
+-                        };
+-                        match message {
+-                            Ok(Message::Ping(payload)) => {
+-                                if let Err(err) = inner.send(Message::Pong(payload)).await {
+-                                    let _ = tx_message.send(Err(err));
+-                                    break;
+-                                }
+-                            }
+-                            Ok(Message::Pong(_)) => {}
+-                            Ok(message @ (Message::Text(_)
+-                            | Message::Binary(_)
+-                            | Message::Close(_)
+-                            | Message::Frame(_))) => {
+-                                let is_close = matches!(message, Message::Close(_));
+-                                if tx_message.send(Ok(message)).is_err() {
+-                                    break;
+-                                }
+-                                if is_close {
+-                                    break;
+-                                }
+-                            }
+-                            Err(err) => {
+-                                let _ = tx_message.send(Err(err));
+-                                break;
+-                            }
+-                        }
+-                    }
+-                }
+-            }
+-        });
+-
+-        Self {
+-            tx_command,
+-            rx_message,
+-            pump_task,
+-        }
+-    }
+-
+-    async fn request(
+-        &self,
+-        make_command: impl FnOnce(oneshot::Sender<Result<(), WsError>>) -> WsCommand,
+-    ) -> Result<(), WsError> {
+-        let (tx_result, rx_result) = oneshot::channel();
+-        if self.tx_command.send(make_command(tx_result)).await.is_err() {
+-            return Err(WsError::ConnectionClosed);
+-        }
+-        rx_result.await.unwrap_or(Err(WsError::ConnectionClosed))
+-    }
+-
+-    async fn send(&self, message: Message) -> Result<(), WsError> {
+-        self.request(|tx_result| WsCommand::Send { message, tx_result })
+-            .await
+-    }
+-
+-    async fn next(&mut self) -> Option<Result<Message, WsError>> {
+-        self.rx_message.recv().await
+-    }
+-}
+-
+-impl Drop for WsStream {
+-    fn drop(&mut self) {
+-        self.pump_task.abort();
+-    }
+-}
+-
+ const X_CODEX_TURN_STATE_HEADER: &str = "x-codex-turn-state";
+ const X_MODELS_ETAG_HEADER: &str = "x-models-etag";
+ const X_REASONING_INCLUDED_HEADER: &str = "x-reasoning-included";
+@@ -549,7 +441,7 @@ async fn connect_websocket(
+         let _ = turn_state.set(header_value.to_string());
+     }
+     Ok((
+-        WsStream::new(stream),
++        WsStream::new(stream, codex_http_client::network_changes()),
+         response.status(),
+         reasoning_included,
+         server_model,
+diff --git a/codex-rs/codex-api/src/endpoint/responses_websocket_stream.rs b/codex-rs/codex-api/src/endpoint/responses_websocket_stream.rs
+new file mode 100644
+index 0000000000..1a186bc910
+--- /dev/null
++++ b/codex-rs/codex-api/src/endpoint/responses_websocket_stream.rs
+@@ -0,0 +1,194 @@
++//! Responses socket I/O and transport liveness, independent of model-message idle timeouts.
++
++use bytes::Bytes;
++use codex_http_client::NetworkChange;
++use futures::Sink;
++use futures::SinkExt;
++use futures::Stream;
++use futures::StreamExt;
++use std::io;
++use std::time::Duration;
++use tokio::sync::mpsc;
++use tokio::sync::oneshot;
++use tokio::sync::watch;
++use tokio::time::Instant;
++use tokio_tungstenite::tungstenite::Error as WsError;
++use tokio_tungstenite::tungstenite::Message;
++use uuid::Uuid;
++
++const PROBE_INTERVAL: Duration = Duration::from_secs(5);
++const PONG_TIMEOUT: Duration = Duration::from_secs(10);
++const MAX_QUEUED_FRAMES_AFTER_DEADLINE: usize = 32;
++
++pub(super) struct WsStream {
++    tx_command: mpsc::Sender<WsCommand>,
++    rx_message: mpsc::UnboundedReceiver<Result<Message, WsError>>,
++    pump_task: tokio::task::JoinHandle<()>,
++}
++
++struct WsCommand {
++    message: Message,
++    tx_result: oneshot::Sender<Result<(), WsError>>,
++}
++
++impl WsStream {
++    pub(super) fn new<S>(mut inner: S, mut network_changes: watch::Receiver<NetworkChange>) -> Self
++    where
++        S: Stream<Item = Result<Message, WsError>>
++            + Sink<Message, Error = WsError>
++            + Unpin
++            + Send
++            + 'static,
++    {
++        let (tx_command, mut rx_command) = mpsc::channel::<WsCommand>(32);
++        let (tx_message, rx_message) = mpsc::unbounded_channel();
++        let pump_task = tokio::spawn(async move {
++            let mut expected_pong: Option<Bytes> = None;
++            let mut heartbeat_at = Instant::now() + PROBE_INTERVAL;
++            let mut observing_network = true;
++            let mut expired_frames = 0;
++            let mut wake_epoch = network_changes.borrow_and_update().wake_epoch;
++            loop {
++                // Apply queued wake notifications before evaluating an old deadline.
++                tokio::select! {
++                    biased;
++                    changed = network_changes.changed(), if observing_network => {
++                        if changed.is_err() {
++                            observing_network = false;
++                        } else {
++                            let change = *network_changes.borrow_and_update();
++                            if change.wake_epoch != wake_epoch {
++                                // A pre-sleep probe must not consume the post-wake reply budget.
++                                wake_epoch = change.wake_epoch;
++                                expected_pong = None;
++                                heartbeat_at = Instant::now();
++                            } else if expected_pong.is_none() {
++                                // Coalesce network churn instead of extending a pending deadline.
++                                heartbeat_at = Instant::now();
++                            }
++                        }
++                    }
++                    message = inner.next() => {
++                        let Some(message) = message else { break };
++                        match message {
++                            Ok(Message::Ping(payload)) => {
++                                if let Err(error) = send(&mut inner, Message::Pong(payload)).await {
++                                    let _ = tx_message.send(Err(error));
++                                    break;
++                                }
++                            }
++                            Ok(Message::Pong(payload)) => {
++                                if expected_pong.as_ref() == Some(&payload) {
++                                    expected_pong = None;
++                                    heartbeat_at = Instant::now() + PROBE_INTERVAL;
++                                    tracing::debug!("websocket liveness pong received");
++                                }
++                            }
++                            Ok(message @ (Message::Text(_) | Message::Binary(_)
++                                | Message::Close(_) | Message::Frame(_))) => {
++                                let closed = matches!(message, Message::Close(_));
++                                if tx_message.send(Ok(message)).is_err() || closed { break; }
++                            }
++                            Err(error) => {
++                                let _ = tx_message.send(Err(error));
++                                break;
++                            }
++                        }
++                        // Drain already-ready frames so a queued Pong behind a server Ping
++                        // survives a scheduler pause. Bound the drain against frame floods.
++                        if expected_pong.is_some() && Instant::now() >= heartbeat_at {
++                            expired_frames += 1;
++                        } else {
++                            expired_frames = 0;
++                        }
++                        if expired_frames >= MAX_QUEUED_FRAMES_AFTER_DEADLINE {
++                            let _ = tx_message.send(Err(timeout_error(
++                                "websocket heartbeat timed out waiting for pong",
++                            )));
++                            break;
++                        }
++                    }
++                    _ = tokio::time::sleep_until(heartbeat_at) => {
++                        if expected_pong.is_some() {
++                            tracing::warn!("websocket heartbeat timed out waiting for pong");
++                            let _ = tx_message.send(Err(timeout_error(
++                                "websocket heartbeat timed out waiting for pong",
++                            )));
++                            break;
++                        }
++                        let nonce = Bytes::copy_from_slice(Uuid::new_v4().as_bytes());
++                        let deadline = Instant::now() + PONG_TIMEOUT;
++                        if let Err(error) = send(&mut inner, Message::Ping(nonce.clone())).await {
++                            let _ = tx_message.send(Err(error));
++                            break;
++                        }
++                        expected_pong = Some(nonce);
++                        expired_frames = 0;
++                        heartbeat_at = deadline;
++                        tracing::debug!("websocket liveness ping sent");
++                    }
++                    command = rx_command.recv() => {
++                        let Some(WsCommand { message, tx_result }) = command else { break };
++                        // Large requests retain their caller's write budget. The short deadline
++                        // is for control frames, not a new limit on prompt/image uploads.
++                        let result = inner.send(message).await;
++                        let failed = result.is_err();
++                        // Receiving was paused during this write. An old probe cannot judge
++                        // liveness while its Pong may be waiting in the socket's read buffer.
++                        expected_pong = None;
++                        heartbeat_at = Instant::now() + PROBE_INTERVAL;
++                        let _ = tx_result.send(result);
++                        if failed { break; }
++                    }
++
++                }
++            }
++        });
++        Self {
++            tx_command,
++            rx_message,
++            pump_task,
++        }
++    }
++
++    pub(super) async fn send(&self, message: Message) -> Result<(), WsError> {
++        let (tx_result, rx_result) = oneshot::channel();
++        if self
++            .tx_command
++            .send(WsCommand { message, tx_result })
++            .await
++            .is_err()
++        {
++            return Err(WsError::ConnectionClosed);
++        }
++        rx_result.await.unwrap_or(Err(WsError::ConnectionClosed))
++    }
++
++    pub(super) async fn next(&mut self) -> Option<Result<Message, WsError>> {
++        self.rx_message.recv().await
++    }
++}
++
++// A control-frame write must not strand the pump before its reply deadline starts.
++async fn send<S>(stream: &mut S, message: Message) -> Result<(), WsError>
++where
++    S: Sink<Message, Error = WsError> + Unpin,
++{
++    tokio::time::timeout(PONG_TIMEOUT, stream.send(message))
++        .await
++        .unwrap_or_else(|_| Err(timeout_error("websocket write timed out")))
++}
++
++fn timeout_error(message: &'static str) -> WsError {
++    WsError::Io(io::Error::new(io::ErrorKind::TimedOut, message))
++}
++
++impl Drop for WsStream {
++    fn drop(&mut self) {
++        self.pump_task.abort();
++    }
++}
++
++#[cfg(test)]
++#[path = "responses_websocket_stream_tests.rs"]
++mod tests;
+diff --git a/codex-rs/codex-api/src/endpoint/responses_websocket_stream_tests.rs b/codex-rs/codex-api/src/endpoint/responses_websocket_stream_tests.rs
+new file mode 100644
+index 0000000000..cb0e989133
+--- /dev/null
++++ b/codex-rs/codex-api/src/endpoint/responses_websocket_stream_tests.rs
+@@ -0,0 +1,274 @@
++use super::*;
++use pretty_assertions::assert_eq;
++use tokio::io::AsyncReadExt;
++use tokio::io::AsyncWriteExt;
++use tokio::io::DuplexStream;
++use tokio_tungstenite::WebSocketStream;
++use tokio_tungstenite::tungstenite::protocol::Role;
++
++async fn connection(capacity: usize) -> (WsStream, DuplexStream, watch::Sender<NetworkChange>) {
++    let (client, peer) = tokio::io::duplex(capacity);
++    let socket = WebSocketStream::from_raw_socket(client, Role::Client, None).await;
++    let (changes, receiver) = watch::channel(NetworkChange::default());
++    (WsStream::new(socket, receiver), peer, changes)
++}
++
++async fn read_frame(peer: &mut DuplexStream) -> (u8, Vec<u8>) {
++    let mut header = [0; 2];
++    peer.read_exact(&mut header).await.unwrap();
++    assert!(header[1] & 0x80 != 0, "client frames must be masked");
++    let length = usize::from(header[1] & 0x7f);
++    assert!(length < 126, "test expects a small control frame");
++    let mut mask = [0; 4];
++    peer.read_exact(&mut mask).await.unwrap();
++    let mut payload = vec![0; length];
++    peer.read_exact(&mut payload).await.unwrap();
++    for (index, byte) in payload.iter_mut().enumerate() {
++        *byte ^= mask[index % 4];
++    }
++    (header[0] & 0xf, payload)
++}
++
++async fn write_frame(peer: &mut DuplexStream, opcode: u8, payload: &[u8]) {
++    assert!(payload.len() < 126);
++    peer.write_all(&[0x80 | opcode, payload.len() as u8])
++        .await
++        .unwrap();
++    peer.write_all(payload).await.unwrap();
++    tokio::task::yield_now().await;
++}
++
++async fn expect_heartbeat_timeout(stream: &mut WsStream) {
++    let error = stream.next().await.unwrap().unwrap_err();
++    let WsError::Io(error) = error else {
++        panic!("expected I/O timeout")
++    };
++    assert_eq!(error.kind(), io::ErrorKind::TimedOut);
++    assert_eq!(
++        error.to_string(),
++        "websocket heartbeat timed out waiting for pong"
++    );
++}
++
++#[tokio::test(start_paused = true)]
++async fn silent_peer_fails_without_waiting_for_model_idle_timeout() {
++    let (mut stream, mut peer, _changes) = connection(1024).await;
++    let started = Instant::now();
++    let (opcode, _) = read_frame(&mut peer).await;
++    assert_eq!(opcode, 9);
++    expect_heartbeat_timeout(&mut stream).await;
++    assert_eq!(started.elapsed(), PROBE_INTERVAL + PONG_TIMEOUT);
++}
++
++#[tokio::test(start_paused = true)]
++async fn quiet_healthy_peer_keeps_running_without_forwarding_control_frames() {
++    let (mut stream, mut peer, _changes) = connection(1024).await;
++    for _ in 0..5 {
++        let (opcode, nonce) = read_frame(&mut peer).await;
++        assert_eq!(opcode, 9);
++        write_frame(&mut peer, 10, &nonce).await;
++    }
++    write_frame(&mut peer, 1, b"model response").await;
++    assert_eq!(
++        stream.next().await.unwrap().unwrap(),
++        Message::text("model response")
++    );
++}
++
++#[tokio::test(start_paused = true)]
++async fn wrong_pong_does_not_hide_a_dead_connection() {
++    let (mut stream, mut peer, _changes) = connection(1024).await;
++    let _ = read_frame(&mut peer).await;
++    write_frame(&mut peer, 10, b"unrelated pong").await;
++    expect_heartbeat_timeout(&mut stream).await;
++}
++
++#[tokio::test(start_paused = true)]
++async fn wake_replaces_the_old_probe_and_gives_a_fresh_reply_deadline() {
++    let (mut stream, mut peer, changes) = connection(1024).await;
++    let (_, old_nonce) = read_frame(&mut peer).await;
++    tokio::time::advance(Duration::from_secs(9)).await;
++    let woke_at = Instant::now();
++    changes.send_modify(|change| change.wake_epoch += 1);
++    let (opcode, fresh_nonce) = read_frame(&mut peer).await;
++    assert_eq!(opcode, 9);
++    assert_ne!(fresh_nonce, old_nonce);
++    assert_eq!(woke_at.elapsed(), Duration::ZERO);
++    write_frame(&mut peer, 10, &old_nonce).await;
++    expect_heartbeat_timeout(&mut stream).await;
++    assert_eq!(woke_at.elapsed(), PONG_TIMEOUT);
++}
++
++#[tokio::test(start_paused = true)]
++async fn healthy_connection_survives_wake_during_a_probe() {
++    let (mut stream, mut peer, changes) = connection(1024).await;
++    let _ = read_frame(&mut peer).await;
++    tokio::time::advance(Duration::from_secs(9)).await;
++    changes.send_modify(|change| change.wake_epoch += 1);
++    let (_, nonce) = read_frame(&mut peer).await;
++    tokio::time::advance(Duration::from_secs(8)).await;
++    write_frame(&mut peer, 10, &nonce).await;
++    write_frame(&mut peer, 1, b"still working").await;
++    assert_eq!(
++        stream.next().await.unwrap().unwrap(),
++        Message::text("still working")
++    );
++}
++
++#[tokio::test(start_paused = true)]
++async fn server_ping_is_answered_but_does_not_acknowledge_the_client_probe() {
++    let (mut stream, mut peer, _changes) = connection(1024).await;
++    let _ = read_frame(&mut peer).await;
++    write_frame(&mut peer, 9, b"server probe").await;
++    assert_eq!(read_frame(&mut peer).await, (10, b"server probe".to_vec()));
++    expect_heartbeat_timeout(&mut stream).await;
++}
++
++#[tokio::test(start_paused = true)]
++async fn stalled_probe_write_is_bounded_instead_of_blocking_the_heartbeat_pump() {
++    let (mut stream, _peer, _changes) = connection(1).await;
++    let started = Instant::now();
++    let error = stream.next().await.unwrap().unwrap_err();
++    let WsError::Io(error) = error else {
++        panic!("expected I/O timeout")
++    };
++    assert_eq!(error.kind(), io::ErrorKind::TimedOut);
++    assert_eq!(started.elapsed(), PROBE_INTERVAL + PONG_TIMEOUT);
++}
++
++#[tokio::test(start_paused = true)]
++async fn slow_request_upload_retains_its_existing_write_budget() {
++    let (stream, mut peer, _changes) = connection(1).await;
++    let sending = tokio::spawn(async move { stream.send(Message::text("request")).await });
++    tokio::task::yield_now().await;
++    tokio::time::advance(Duration::from_secs(11)).await;
++    tokio::task::yield_now().await;
++    assert!(!sending.is_finished());
++    let mut wire = Vec::new();
++    peer.read_to_end(&mut wire).await.unwrap();
++    assert!(sending.await.unwrap().is_ok());
++}
++
++#[tokio::test(start_paused = true)]
++async fn dropping_a_connection_stops_its_heartbeat_task() {
++    let (stream, mut peer, _changes) = connection(1024).await;
++    drop(stream);
++    let mut byte = [0];
++    assert_eq!(peer.read(&mut byte).await.unwrap(), 0);
++}
++
++#[tokio::test(start_paused = true)]
++async fn closed_observer_retains_periodic_probes() {
++    let (mut stream, mut peer, changes) = connection(1024).await;
++    drop(changes);
++    assert_eq!(read_frame(&mut peer).await.0, 9);
++    expect_heartbeat_timeout(&mut stream).await;
++}
++
++#[tokio::test(start_paused = true)]
++async fn pending_wake_wins_over_an_expired_pre_sleep_probe() {
++    let (mut stream, mut peer, changes) = connection(1024).await;
++    let (_, old_nonce) = read_frame(&mut peer).await;
++    // Queue the notification without yielding, then expire the old timer before the pump runs.
++    changes.send_modify(|change| change.wake_epoch += 1);
++    tokio::time::advance(PONG_TIMEOUT + Duration::from_secs(20)).await;
++    let woke_at = Instant::now();
++    let (opcode, fresh_nonce) = read_frame(&mut peer).await;
++    assert_eq!(opcode, 9);
++    assert_ne!(fresh_nonce, old_nonce);
++    expect_heartbeat_timeout(&mut stream).await;
++    assert_eq!(woke_at.elapsed(), PONG_TIMEOUT);
++}
++
++#[tokio::test(start_paused = true)]
++async fn repeated_network_hints_do_not_extend_an_outstanding_probe() {
++    let (mut stream, mut peer, changes) = connection(1024).await;
++    let _ = read_frame(&mut peer).await;
++    let sent_at = Instant::now();
++    for _ in 0..4 {
++        tokio::time::advance(Duration::from_secs(2)).await;
++        changes.send_modify(|_| {});
++        tokio::task::yield_now().await;
++    }
++    expect_heartbeat_timeout(&mut stream).await;
++    assert_eq!(sent_at.elapsed(), PONG_TIMEOUT);
++}
++
++#[tokio::test(start_paused = true)]
++async fn network_change_probes_immediately_when_no_probe_is_pending() {
++    let (_stream, mut peer, changes) = connection(1024).await;
++    tokio::task::yield_now().await;
++    let changed_at = Instant::now();
++    changes.send_modify(|_| {});
++    assert_eq!(read_frame(&mut peer).await.0, 9);
++    assert_eq!(changed_at.elapsed(), Duration::ZERO);
++}
++
++#[tokio::test(start_paused = true)]
++async fn slow_upload_during_a_probe_does_not_expire_an_unread_pong() {
++    let (stream, mut peer, _changes) = connection(1).await;
++    let (_, nonce) = read_frame(&mut peer).await;
++    let sending = tokio::spawn(async move {
++        let result = stream.send(Message::text("request")).await;
++        (stream, result)
++    });
++    // Read the application frame header, proving its write started, then apply backpressure.
++    let mut first = [0; 1];
++    peer.read_exact(&mut first).await.unwrap();
++    assert_eq!(first[0], 0x81);
++    tokio::time::advance(PONG_TIMEOUT + Duration::from_secs(1)).await;
++    assert!(!sending.is_finished());
++    let mut rest = [0; 12];
++    peer.read_exact(&mut rest).await.unwrap();
++    let (mut stream, result) = sending.await.unwrap();
++    assert!(result.is_ok());
++    write_frame(&mut peer, 10, &nonce).await;
++    write_frame(&mut peer, 1, b"upload completed").await;
++    assert_eq!(
++        stream.next().await.unwrap().unwrap(),
++        Message::text("upload completed")
++    );
++}
++
++#[tokio::test(start_paused = true)]
++async fn queued_matching_pong_wins_over_a_deadline_after_a_scheduler_pause() {
++    let (mut stream, mut peer, _changes) = connection(1024).await;
++    let (_, nonce) = read_frame(&mut peer).await;
++    // These writes fit in the duplex buffer without yielding to the pump.
++    peer.write_all(&[0x8a, nonce.len() as u8]).await.unwrap();
++    peer.write_all(&nonce).await.unwrap();
++    tokio::time::advance(PONG_TIMEOUT + Duration::from_secs(1)).await;
++    write_frame(&mut peer, 1, b"still responsive").await;
++    assert_eq!(
++        stream.next().await.unwrap().unwrap(),
++        Message::text("still responsive")
++    );
++}
++
++#[tokio::test(start_paused = true)]
++async fn queued_unrelated_pongs_do_not_starve_an_expired_probe() {
++    let (mut stream, mut peer, _changes) = connection(1024).await;
++    let _ = read_frame(&mut peer).await;
++    for _ in 0..20 {
++        peer.write_all(&[0x8a, 1, 0]).await.unwrap();
++    }
++    tokio::time::advance(PONG_TIMEOUT).await;
++    expect_heartbeat_timeout(&mut stream).await;
++}
++
++#[tokio::test(start_paused = true)]
++async fn queued_server_ping_before_matching_pong_survives_a_scheduler_pause() {
++    let (mut stream, mut peer, _changes) = connection(1024).await;
++    let (_, nonce) = read_frame(&mut peer).await;
++    peer.write_all(&[0x89, 1, 7, 0x8a, nonce.len() as u8])
++        .await
++        .unwrap();
++    peer.write_all(&nonce).await.unwrap();
++    tokio::time::advance(PONG_TIMEOUT + Duration::from_secs(1)).await;
++    assert_eq!(read_frame(&mut peer).await, (10, vec![7]));
++    write_frame(&mut peer, 1, b"still responsive").await;
++    assert_eq!(
++        stream.next().await.unwrap().unwrap(),
++        Message::text("still responsive")
++    );
++}
+diff --git a/codex-rs/core/src/responses_retry.rs b/codex-rs/core/src/responses_retry.rs
+index fb0505411e..e9316c1ba8 100644
+--- a/codex-rs/core/src/responses_retry.rs
++++ b/codex-rs/core/src/responses_retry.rs
+@@ -105,21 +105,12 @@ pub(crate) async fn handle_retryable_response_stream_error(
+         let delay = err.retry_delay().unwrap_or_else(|| backoff(retry_count));
+         log_retry(request, turn_context, &err, retry_count, max_retries, delay);
+ 
+-        // In release builds, hide the first websocket retry notification to reduce noisy
+-        // transient reconnect messages. In debug builds, keep full visibility for diagnosis.
+-        let report_error = retry_count > 1
+-            || cfg!(debug_assertions)
+-            || !sess.services.model_client.responses_websocket_enabled();
+-        if report_error {
+-            // Surface retry information to any UI/front-end so the user understands what is
+-            // happening instead of staring at a seemingly frozen screen.
+-            sess.notify_stream_error(
+-                turn_context,
+-                format!("Reconnecting... {retry_count}/{max_retries}"),
+-                err,
+-            )
+-            .await;
+-        }
++        sess.notify_stream_error(
++            turn_context,
++            format!("Reconnecting... {retry_count}/{max_retries}"),
++            err,
++        )
++        .await;
+         codex_client::record_retry!(retry_count, delay, operation);
+         tokio::time::sleep(delay).await;
+         return Ok(());
+diff --git a/codex-rs/core/tests/suite/websocket_fallback.rs b/codex-rs/core/tests/suite/websocket_fallback.rs
+index 529419b8d1..33010e0d20 100644
+--- a/codex-rs/core/tests/suite/websocket_fallback.rs
++++ b/codex-rs/core/tests/suite/websocket_fallback.rs
+@@ -128,7 +128,7 @@ async fn websocket_fallback_switches_to_http_after_retries_exhausted() -> Result
+ }
+ 
+ #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+-async fn websocket_fallback_hides_first_websocket_retry_stream_error() -> Result<()> {
++async fn websocket_fallback_shows_first_websocket_retry_stream_error() -> Result<()> {
+     skip_if_no_network!(Ok(()));
+ 
+     let server = responses::start_mock_server().await;
+@@ -195,11 +195,7 @@ async fn websocket_fallback_hides_first_websocket_retry_stream_error() -> Result
+         }
+     }
+ 
+-    let expected_stream_errors = if cfg!(debug_assertions) {
+-        vec!["Reconnecting... 1/2", "Reconnecting... 2/2"]
+-    } else {
+-        vec!["Reconnecting... 2/2"]
+-    };
++    let expected_stream_errors = vec!["Reconnecting... 1/2", "Reconnecting... 2/2"];
+     assert_eq!(stream_error_messages, expected_stream_errors);
+     assert_eq!(response_mock.requests().len(), 1);
+ 
+diff --git a/codex-rs/http-client/src/lib.rs b/codex-rs/http-client/src/lib.rs
+index cb7f1209e2..71fbac060c 100644
+--- a/codex-rs/http-client/src/lib.rs
++++ b/codex-rs/http-client/src/lib.rs
+@@ -4,6 +4,7 @@ mod client;
+ mod client_builder;
+ mod custom_ca;
+ mod error;
++mod network_changes;
+ mod outbound_proxy;
+ mod request;
+ mod route_aware_client_pool;
+@@ -31,6 +32,8 @@ pub use crate::custom_ca::build_rustls_client_config_with_custom_ca;
+ pub use crate::custom_ca::maybe_build_rustls_client_config_with_custom_ca;
+ pub use crate::error::StreamError;
+ pub use crate::error::TransportError;
++pub use crate::network_changes::NetworkChange;
++pub use crate::network_changes::network_changes;
+ pub use crate::outbound_proxy::BuildRouteAwareHttpClientError;
+ pub use crate::outbound_proxy::ClientRouteClass;
+ pub use crate::outbound_proxy::HttpClientFactory;
+diff --git a/codex-rs/http-client/src/network_changes.rs b/codex-rs/http-client/src/network_changes.rs
+new file mode 100644
+index 0000000000..690f6766b6
+--- /dev/null
++++ b/codex-rs/http-client/src/network_changes.rs
+@@ -0,0 +1,178 @@
++//! Process-wide hints to recheck established transports after wake or a network change.
++
++use std::sync::OnceLock;
++use tokio::sync::watch;
++
++/// Snapshot carried with a network hint, preserving wake events when notifications coalesce.
++#[derive(Clone, Copy, Default)]
++pub struct NetworkChange {
++    /// Changes only after a system wake, which grants a fresh probe deadline.
++    pub wake_epoch: u64,
++}
++
++/// Subscribes to macOS wake and network changes. Other platforms retain periodic transport probes.
++///
++/// A change is a reason to check a connection, not proof that it failed or that the network is ready.
++pub fn network_changes() -> watch::Receiver<NetworkChange> {
++    static CHANGES: OnceLock<watch::Sender<NetworkChange>> = OnceLock::new();
++    CHANGES
++        .get_or_init(|| {
++            let (sender, _) = watch::channel(NetworkChange::default());
++            #[cfg(target_os = "macos")]
++            {
++                let changes = sender.clone();
++                if let Err(error) = std::thread::Builder::new()
++                    .name("codex-network-changes".into())
++                    .spawn(move || macos::observe(changes))
++                {
++                    tracing::warn!(%error, "network change observer unavailable; using periodic probes");
++                }
++            }
++            sender
++        })
++        .subscribe()
++}
++
++#[cfg(target_os = "macos")]
++mod macos {
++    use super::NetworkChange;
++    use std::ffi::c_void;
++    use std::ptr;
++    use system_configuration::core_foundation::array::CFArray;
++    use system_configuration::core_foundation::base::TCFType;
++    use system_configuration::core_foundation::runloop::CFRunLoop;
++    use system_configuration::core_foundation::runloop::CFRunLoopSource;
++    use system_configuration::core_foundation::runloop::CFRunLoopSourceRef;
++    use system_configuration::core_foundation::runloop::kCFRunLoopDefaultMode;
++    use system_configuration::core_foundation::string::CFString;
++    use system_configuration::dynamic_store::SCDynamicStoreBuilder;
++    use system_configuration::dynamic_store::SCDynamicStoreCallBackContext;
++    use tokio::sync::watch;
++
++    const CAN_SLEEP: u32 = 0xe0000270;
++    const WILL_SLEEP: u32 = 0xe0000280;
++    const DID_WAKE: u32 = 0xe0000300;
++
++    #[link(name = "IOKit", kind = "framework")]
++    unsafe extern "C" {
++        fn IORegisterForSystemPower(
++            context: *mut c_void,
++            port: *mut *mut c_void,
++            callback: unsafe extern "C" fn(*mut c_void, u32, u32, *mut c_void),
++            notifier: *mut u32,
++        ) -> u32;
++        fn IONotificationPortGetRunLoopSource(port: *mut c_void) -> CFRunLoopSourceRef;
++        fn IOAllowPowerChange(connection: u32, notification: isize) -> i32;
++        fn IODeregisterForSystemPower(notifier: *mut u32) -> i32;
++        fn IOServiceClose(connection: u32) -> i32;
++        fn IONotificationPortDestroy(port: *mut c_void);
++    }
++
++    struct PowerObserver {
++        changes: watch::Sender<NetworkChange>,
++        connection: u32,
++        port: *mut c_void,
++        notifier: u32,
++    }
++
++    impl Drop for PowerObserver {
++        fn drop(&mut self) {
++            // Deregister before the callback context is freed, even if run-loop setup failed.
++            unsafe {
++                if self.notifier != 0 {
++                    IODeregisterForSystemPower(&mut self.notifier);
++                }
++                if self.connection != 0 {
++                    IOServiceClose(self.connection);
++                }
++                if !self.port.is_null() {
++                    IONotificationPortDestroy(self.port);
++                }
++            }
++        }
++    }
++
++    unsafe extern "C" fn power_changed(
++        context: *mut c_void,
++        _service: u32,
++        message: u32,
++        argument: *mut c_void,
++    ) {
++        // IOKit invokes this only on the owning run loop while PowerObserver remains allocated.
++        let observer = unsafe { &*(context.cast::<PowerObserver>()) };
++        match message {
++            CAN_SLEEP | WILL_SLEEP => {
++                // Observe sleep without delaying or vetoing it.
++                unsafe { IOAllowPowerChange(observer.connection, argument as isize) };
++            }
++            DID_WAKE => {
++                tracing::debug!("macOS woke; rechecking model connections");
++                observer
++                    .changes
++                    .send_modify(|change| change.wake_epoch = change.wake_epoch.wrapping_add(1));
++            }
++            _ => {}
++        }
++    }
++
++    pub(super) fn observe(changes: watch::Sender<NetworkChange>) {
++        let run_loop = CFRunLoop::get_current();
++        let mode = unsafe { kCFRunLoopDefaultMode };
++        let store = SCDynamicStoreBuilder::new("Codex connection recovery")
++            .callback_context(SCDynamicStoreCallBackContext {
++                callout: |_, _, changes: &mut watch::Sender<NetworkChange>| {
++                    tracing::debug!("macOS network changed; rechecking model connections");
++                    changes.send_modify(|_| {});
++                },
++                info: changes.clone(),
++            })
++            .build();
++        let network_source = store.as_ref().and_then(|store| {
++            let keys = CFArray::<CFString>::from_CFTypes(&[]);
++            let patterns = CFArray::from_CFTypes(&[CFString::new(
++                "State:/Network/(Global|Service/[^/]+|Interface/[^/]+)/(IPv4|IPv6|DNS|Proxies|Link)",
++            )]);
++            store.set_notification_keys(&keys, &patterns)
++                .then(|| store.create_run_loop_source()).flatten()
++        });
++        if let Some(source) = &network_source {
++            run_loop.add_source(source, mode);
++        }
++
++        let mut power = Box::new(PowerObserver {
++            changes,
++            connection: 0,
++            port: ptr::null_mut(),
++            notifier: 0,
++        });
++        power.connection = unsafe {
++            IORegisterForSystemPower(
++                ptr::from_mut(power.as_mut()).cast(),
++                &mut power.port,
++                power_changed,
++                &mut power.notifier,
++            )
++        };
++        let power_source = if power.connection != 0 && !power.port.is_null() {
++            let source = unsafe { IONotificationPortGetRunLoopSource(power.port) };
++            if source.is_null() {
++                None
++            } else {
++                Some(unsafe { CFRunLoopSource::wrap_under_get_rule(source) })
++            }
++        } else {
++            None
++        };
++        if let Some(source) = &power_source {
++            run_loop.add_source(source, mode);
++        }
++        tracing::debug!(
++            wake = power_source.is_some(),
++            network = network_source.is_some(),
++            "macOS connection recovery observer registered"
++        );
++        if network_source.is_some() || power_source.is_some() {
++            CFRunLoop::run_current();
++        }
++    }
++}

@@ -1,0 +1,43 @@
+{
+  "label": "final",
+  "case": "silent",
+  "binary_sha256_before": "b278342ed1e6db758eb497cb706101dc64a513980d0c1def3f83536482539104",
+  "binary_sha256_after": "b278342ed1e6db758eb497cb706101dc64a513980d0c1def3f83536482539104",
+  "binary_unchanged": true,
+  "success": true,
+  "recovery_seconds_from_first_request": 15.3132,
+  "bb_evidence": {
+    "first_retry_feedback": [
+      {
+        "message": "Provider error",
+        "detail": "Reconnecting... 1/1\nstream disconnected before completion: IO error: websocket heartbeat timed out waiting for pong",
+        "willRetry": true
+      }
+    ],
+    "output": {
+      "output": "RECOVERY_OK"
+    },
+    "native_observer_registration": {
+      "observed": true,
+      "wake": true,
+      "network": true,
+      "physical_wake_tested": false
+    },
+    "launcher_exit_code": 0,
+    "ports_closed": [
+      true,
+      true
+    ],
+    "keep_awake": {
+      "enabled": false,
+      "selection": {
+        "mode": "all"
+      }
+    }
+  },
+  "fixture_port_closed": true,
+  "fixture_exit_code": 0,
+  "post_run_process_check": {
+    "remaining_pilot_process_ids": []
+  }
+}

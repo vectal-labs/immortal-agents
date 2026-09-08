@@ -1,0 +1,87 @@
+{
+  "release_commit": "3d2ee51ca2d5db578f328aa75e20aa22c0197c9a",
+  "full_suite": {
+    "run": 16978,
+    "passed": 16933,
+    "failed": 45,
+    "skipped": 44,
+    "log": "test-full.log",
+    "note": "Full run preceded final queued-frame drain refinement; final 17 transport regressions rerun afterward."
+  },
+  "affected_crates": {
+    "passed": 291,
+    "failed": 0,
+    "skipped": 0,
+    "log": "test-transport-final3.log"
+  },
+  "frozen_transport_regressions": {
+    "passed": 17,
+    "failed": 0,
+    "log": "test-frozen-regressions.log"
+  },
+  "immortal_agents": {
+    "passed": 404,
+    "failed": 0,
+    "log": "immortal-tests.log"
+  },
+  "failure_groups": [
+    {
+      "count": 28,
+      "kind": "TUI snapshots",
+      "cause": "Exact release reports 0.153.4; snapshots expect 0.0.0. Four layouts retain version-induced spacing after normalization.",
+      "evidence": "Unchanged snapshot/test source and assertion diffs; no snapshot updates."
+    },
+    {
+      "count": 4,
+      "kind": "MCP initialization",
+      "cause": "Shared assertion expects 0.0.0; exact release reports 0.153.4.",
+      "evidence": "Same version assertion reproduced against installed unmodified 0.153.4 native CLI (baseline-controls/mcp_version.log)."
+    },
+    {
+      "count": 4,
+      "kind": "cursor color",
+      "cause": "Inherited NO_COLOR=1",
+      "evidence": "All four unchanged compiled tests pass with NO_COLOR absent."
+    },
+    {
+      "count": 2,
+      "kind": "Python seatbelt",
+      "cause": "PATH selected Apple Xcode Python launcher; sandbox rejected xcrun cache writes.",
+      "evidence": "Both unchanged compiled tests pass with Homebrew Python first on PATH."
+    },
+    {
+      "count": 1,
+      "kind": "V8 POC",
+      "cause": "Downloaded Codex V8 archive enables sandbox; POC crate needs matching sandbox feature.",
+      "evidence": "All six POC tests pass with --features sandbox (test-v8-correct-feature.log)."
+    },
+    {
+      "count": 3,
+      "kind": "global skills",
+      "cause": "Real ~/.agents/skills loads despite disposable CODEX_HOME, adding budget warning and snapshot entries.",
+      "evidence": "Warning reproduces against dedicated unmodified release app-server; two snapshots show real user skills. HOME and user skills left unchanged."
+    },
+    {
+      "count": 3,
+      "kind": "zsh app-server",
+      "cause": "Initial startup timeouts; two pass on isolated rerun, remaining case reports Failed instead of Declined.",
+      "evidence": "Remaining status failure also reproduces against dedicated unmodified release app-server (baseline-controls/zsh_subcommand_decline_unpatched.log)."
+    }
+  ],
+  "reruns": {
+    "resolved_original_failures": 9,
+    "remaining_explained_failures": 36,
+    "note": "No tests deleted, weakened, or skipped to force a pass; original full suite remains recorded as failed."
+  },
+  "baseline_server": {
+    "commit": "3d2ee51ca2d5db578f328aa75e20aa22c0197c9a",
+    "sha256": "2aa17c55f3181a58385012bf2187eb73e2e1bcdc518ad6988b0bc7d5fd296ae9",
+    "behavior_patch_applied": false,
+    "lockfile_workspace_metadata_normalized": true
+  },
+  "safety": {
+    "physical_sleep_tested": false,
+    "network_settings_changed": false,
+    "default_codex_replaced": false
+  }
+}

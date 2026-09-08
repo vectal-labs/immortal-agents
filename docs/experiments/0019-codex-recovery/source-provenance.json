@@ -1,0 +1,14 @@
+{
+  "base": "3d2ee51ca2d5db578f328aa75e20aa22c0197c9a",
+  "patch_sha256": "aa3e68588d12777bc9f698c312b88106a49c10bf1500a5ef4cf83dd2c79088d9",
+  "files": {
+    "codex-rs/codex-api/src/endpoint/mod.rs": "def74b4b6221ce8fd0565914b64069aaec97edf7f9f9d6a323be69fae51afc83",
+    "codex-rs/codex-api/src/endpoint/responses_websocket.rs": "ed7d9935e6ae7d8f9993c39eee312c174220491b42376ba7dd77f769309ae1c1",
+    "codex-rs/codex-api/src/endpoint/responses_websocket_stream.rs": "1ecac803b6fa04e4287b14c8344e196a4b5a82a74955920920df095137419bb5",
+    "codex-rs/codex-api/src/endpoint/responses_websocket_stream_tests.rs": "78370b8502b192da200c48e91268ff171c7bd25e8459ed41bd8b77912dba75bf",
+    "codex-rs/core/src/responses_retry.rs": "ac476836eadc478e77f94933ee71b4d9a99cfc7c8e80f271d64bc5a82b2b7629",
+    "codex-rs/core/tests/suite/websocket_fallback.rs": "bc7c2834529a9b15c2ad8b6130b60675fb20691dca76d01dc9ad7f98617fc7d9",
+    "codex-rs/http-client/src/lib.rs": "88727a5b3658bb4a383f7bf07d97d41452bd7026ae102bd5a4e2d86c9aceca6c",
+    "codex-rs/http-client/src/network_changes.rs": "5df9499b83a5bb0286e6e6060d25c4fbe895bd39816c82e4cb3064a910a49082"
+  }
+}

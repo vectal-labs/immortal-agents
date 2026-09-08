@@ -1,0 +1,277 @@
+{
+  "package": "0.153.4+wake.1",
+  "binary_sha256": "b278342ed1e6db758eb497cb706101dc64a513980d0c1def3f83536482539104",
+  "binary_unchanged_after_all_checks": true,
+  "passed": true,
+  "transport_cases": 14,
+  "rpc_cases": 2,
+  "real_model_requests": 0,
+  "transport_results": [
+    {
+      "case": "suspend_queued_pong",
+      "recovery_seconds": null,
+      "resume_recovery_seconds": null,
+      "request_count": 1,
+      "connections": 1,
+      "visible_retry_messages": [],
+      "checks": {
+        "no_timeout": true,
+        "final_answer": true,
+        "healthy_suspended_connection_preserved": true,
+        "no_reconnect_notification": true,
+        "ping_then_matching_pong_queued_while_paused": true,
+        "client_replied_to_queued_server_ping": true
+      },
+      "passed": true
+    },
+    {
+      "case": "silent",
+      "recovery_seconds": 15.3763,
+      "resume_recovery_seconds": null,
+      "request_count": 2,
+      "connections": 2,
+      "visible_retry_messages": [
+        "Reconnecting... 1/1 (stream disconnected before completion: IO error: websocket heartbeat timed out waiting for pong)"
+      ],
+      "checks": {
+        "no_timeout": true,
+        "final_answer": true,
+        "fast_recovery": true,
+        "heartbeat_used": true,
+        "first_retry_visible": true,
+        "exactly_one_ws_retry": true
+      },
+      "passed": true
+    },
+    {
+      "case": "quiet",
+      "recovery_seconds": null,
+      "resume_recovery_seconds": null,
+      "request_count": 1,
+      "connections": 1,
+      "visible_retry_messages": [],
+      "checks": {
+        "no_timeout": true,
+        "final_answer": true,
+        "healthy_not_retried": true,
+        "heartbeat_used": true
+      },
+      "passed": true
+    },
+    {
+      "case": "wrong_pong",
+      "recovery_seconds": 15.3734,
+      "resume_recovery_seconds": null,
+      "request_count": 2,
+      "connections": 2,
+      "visible_retry_messages": [
+        "Reconnecting... 1/1 (stream disconnected before completion: IO error: websocket heartbeat timed out waiting for pong)"
+      ],
+      "checks": {
+        "no_timeout": true,
+        "final_answer": true,
+        "fast_recovery": true,
+        "heartbeat_used": true,
+        "first_retry_visible": true,
+        "exactly_one_ws_retry": true
+      },
+      "passed": true
+    },
+    {
+      "case": "server_ping",
+      "recovery_seconds": null,
+      "resume_recovery_seconds": null,
+      "request_count": 1,
+      "connections": 1,
+      "visible_retry_messages": [],
+      "checks": {
+        "no_timeout": true,
+        "final_answer": true,
+        "healthy_not_retried": true,
+        "heartbeat_used": true
+      },
+      "passed": true
+    },
+    {
+      "case": "delayed_pong",
+      "recovery_seconds": null,
+      "resume_recovery_seconds": null,
+      "request_count": 1,
+      "connections": 1,
+      "visible_retry_messages": [],
+      "checks": {
+        "no_timeout": true,
+        "final_answer": true,
+        "healthy_not_retried": true,
+        "heartbeat_used": true
+      },
+      "passed": true
+    },
+    {
+      "case": "late_pong",
+      "recovery_seconds": 15.3575,
+      "resume_recovery_seconds": null,
+      "request_count": 2,
+      "connections": 2,
+      "visible_retry_messages": [
+        "Reconnecting... 1/1 (stream disconnected before completion: IO error: websocket heartbeat timed out waiting for pong)"
+      ],
+      "checks": {
+        "no_timeout": true,
+        "final_answer": true,
+        "fast_recovery": true,
+        "heartbeat_used": true,
+        "first_retry_visible": true,
+        "exactly_one_ws_retry": true
+      },
+      "passed": true
+    },
+    {
+      "case": "server_ping_no_pong",
+      "recovery_seconds": 12.6223,
+      "resume_recovery_seconds": null,
+      "request_count": 2,
+      "connections": 2,
+      "visible_retry_messages": [
+        "Reconnecting... 1/1 (stream disconnected before completion: IO error: websocket heartbeat timed out waiting for pong)"
+      ],
+      "checks": {
+        "no_timeout": true,
+        "final_answer": true,
+        "fast_recovery": true,
+        "heartbeat_used": true,
+        "first_retry_visible": true,
+        "exactly_one_ws_retry": true
+      },
+      "passed": true
+    },
+    {
+      "case": "close",
+      "recovery_seconds": 0.3652,
+      "resume_recovery_seconds": null,
+      "request_count": 2,
+      "connections": 2,
+      "visible_retry_messages": [
+        "Reconnecting... 1/1 (stream disconnected before completion: websocket closed by server before response.completed)"
+      ],
+      "checks": {
+        "no_timeout": true,
+        "final_answer": true,
+        "close_retries_promptly": true,
+        "first_retry_visible": true
+      },
+      "passed": true
+    },
+    {
+      "case": "cancel",
+      "recovery_seconds": null,
+      "resume_recovery_seconds": null,
+      "request_count": 1,
+      "connections": 1,
+      "visible_retry_messages": [],
+      "checks": {
+        "no_timeout": true,
+        "no_retry_after_cancel": true
+      },
+      "passed": true
+    },
+    {
+      "case": "suspend",
+      "recovery_seconds": 26.4108,
+      "resume_recovery_seconds": 0.401,
+      "request_count": 2,
+      "connections": 2,
+      "visible_retry_messages": [
+        "Reconnecting... 1/1 (stream disconnected before completion: IO error: websocket heartbeat timed out waiting for pong)"
+      ],
+      "checks": {
+        "no_timeout": true,
+        "final_answer": true,
+        "fast_resume_recovery": true,
+        "heartbeat_used": true,
+        "first_retry_visible": true,
+        "exactly_one_ws_retry": true
+      },
+      "passed": true
+    },
+    {
+      "case": "application_idle",
+      "recovery_seconds": 1.5047,
+      "resume_recovery_seconds": null,
+      "request_count": 1,
+      "connections": 1,
+      "visible_retry_messages": [],
+      "checks": {
+        "no_timeout": true,
+        "final_answer": true,
+        "separate_application_deadline": true
+      },
+      "passed": true
+    },
+    {
+      "case": "json_keepalive",
+      "recovery_seconds": null,
+      "resume_recovery_seconds": null,
+      "request_count": 1,
+      "connections": 1,
+      "visible_retry_messages": [],
+      "checks": {
+        "no_timeout": true,
+        "final_answer": true,
+        "application_keepalive_control": true
+      },
+      "passed": true
+    },
+    {
+      "case": "tools",
+      "recovery_seconds": 15.3451,
+      "resume_recovery_seconds": null,
+      "request_count": 3,
+      "connections": 2,
+      "visible_retry_messages": [
+        "Reconnecting... 1/1 (stream disconnected before completion: IO error: websocket heartbeat timed out waiting for pong)"
+      ],
+      "checks": {
+        "no_timeout": true,
+        "final_answer": true,
+        "fast_recovery": true,
+        "heartbeat_used": true,
+        "first_retry_visible": true,
+        "exactly_one_ws_retry": true,
+        "completed_tool_preserved_once": true,
+        "one_successful_command_event": true,
+        "tool_result_on_retry": true
+      },
+      "passed": true
+    }
+  ],
+  "rpc_results": [
+    {
+      "case": "cancel",
+      "checks": {
+        "interrupted_status": true,
+        "cancellation_under_3s": true,
+        "no_retry_after_cancel": true,
+        "next_turn_completed": true,
+        "binary_unchanged": true
+      },
+      "passed": true
+    },
+    {
+      "case": "tools_resume",
+      "checks": {
+        "first_turn_completed": true,
+        "same_thread_resumed": true,
+        "resumed_turn_completed": true,
+        "completed_command_once": true,
+        "tool_output_restored_on_resume": true,
+        "tool_output_preserved_on_retry": true,
+        "exactly_one_successful_command_notification": true,
+        "first_retry_notification_visible": true,
+        "fast_transport_retry": true,
+        "binary_unchanged": true
+      },
+      "passed": true
+    }
+  ]
+}

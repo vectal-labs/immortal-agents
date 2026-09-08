@@ -1,0 +1,32 @@
+{
+  "package": {
+    "layoutVersion": 1,
+    "version": "0.153.4+wake.1",
+    "target": "aarch64-apple-darwin",
+    "variant": "codex",
+    "entrypoint": "bin/codex",
+    "resourcesDir": "codex-resources",
+    "pathDir": "codex-path"
+  },
+  "native_sha256": "b278342ed1e6db758eb497cb706101dc64a513980d0c1def3f83536482539104",
+  "rust_version": "1.97.1",
+  "profile": "release",
+  "source_provenance": "source-provenance.json",
+  "lock_metadata_patch_sha256": "31aa652087ba71f03b40dde0e4bbdb3e6f57803ca2547714ead3e87ddb85461e",
+  "external_dependencies_changed": false,
+  "global_entrypoint_changed": false,
+  "helpers": {
+    "bin/codex-code-mode-host": {
+      "sha256": "d8a2222e017342718d16a5dbe092921c628961f812f62f42036b8d960e1ffe56",
+      "matches_installed_0_153_4": true
+    },
+    "codex-path/rg": {
+      "sha256": "3969d598288585478bd9b2fd6c9f7e120b711cf96c5a03844d0197ea6abec346",
+      "matches_installed_0_153_4": true
+    },
+    "codex-resources/zsh/bin/zsh": {
+      "sha256": "712ebaa416a7505fe6719ba99440ae3125423ce46d42d0174963553d81f3f8f1",
+      "matches_installed_0_153_4": true
+    }
+  }
+}

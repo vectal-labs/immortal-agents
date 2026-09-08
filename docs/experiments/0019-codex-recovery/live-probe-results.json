@@ -1,0 +1,198 @@
+{
+  "endpoint": "wss://chatgpt.com/backend-api/codex/responses",
+  "generated_at_utc": "2026-09-08T11:55:14Z",
+  "case_count": 15,
+  "passed": 15,
+  "inference_requests": 0,
+  "tool_requests": 0,
+  "exact_pong_match_count": 29,
+  "rtt_ms_min": 26.084,
+  "rtt_ms_median": 37.115,
+  "rtt_ms_max": 54.174,
+  "limitations": [
+    "Healthy-network transport compatibility only; no physical sleep or network loss.",
+    "Matching Pong proves the WebSocket peer responds, not model progress.",
+    "Fresh probes do not reveal whether the historical stalled connection would have replied."
+  ],
+  "cases": [
+    {
+      "case": "01_fresh_connection_random_nonce",
+      "passed": true,
+      "exact_nonce_matches": 1,
+      "rtt_ms": [
+        42.433
+      ],
+      "quiet_seconds": 0,
+      "server_pings_received": 0,
+      "duration_seconds": 2.365
+    },
+    {
+      "case": "02_ascii_nonce",
+      "passed": true,
+      "exact_nonce_matches": 1,
+      "rtt_ms": [
+        41.522
+      ],
+      "quiet_seconds": 0,
+      "server_pings_received": 0,
+      "duration_seconds": 2.379
+    },
+    {
+      "case": "03_binary_nonce",
+      "passed": true,
+      "exact_nonce_matches": 1,
+      "rtt_ms": [
+        29.664
+      ],
+      "quiet_seconds": 0,
+      "server_pings_received": 0,
+      "duration_seconds": 2.476
+    },
+    {
+      "case": "04_maximum_control_payload",
+      "passed": true,
+      "exact_nonce_matches": 1,
+      "rtt_ms": [
+        49.561
+      ],
+      "quiet_seconds": 0,
+      "server_pings_received": 0,
+      "duration_seconds": 2.374
+    },
+    {
+      "case": "05_empty_control_payload",
+      "passed": true,
+      "exact_nonce_matches": 1,
+      "rtt_ms": [
+        31.707
+      ],
+      "quiet_seconds": 0,
+      "server_pings_received": 0,
+      "duration_seconds": 2.329
+    },
+    {
+      "case": "06_quiet_5_seconds",
+      "passed": true,
+      "exact_nonce_matches": 1,
+      "rtt_ms": [
+        32.008
+      ],
+      "quiet_seconds": 5,
+      "server_pings_received": 0,
+      "duration_seconds": 7.641
+    },
+    {
+      "case": "07_quiet_15_seconds",
+      "passed": true,
+      "exact_nonce_matches": 1,
+      "rtt_ms": [
+        36.769
+      ],
+      "quiet_seconds": 15,
+      "server_pings_received": 0,
+      "duration_seconds": 17.344
+    },
+    {
+      "case": "08_quiet_45_seconds",
+      "passed": true,
+      "exact_nonce_matches": 1,
+      "rtt_ms": [
+        36.884
+      ],
+      "quiet_seconds": 45,
+      "server_pings_received": 2,
+      "duration_seconds": 47.345
+    },
+    {
+      "case": "09_five_sequential_probes",
+      "passed": true,
+      "exact_nonce_matches": 5,
+      "rtt_ms": [
+        54.174,
+        35.021,
+        29.202,
+        26.402,
+        26.524
+      ],
+      "interval_seconds": 0,
+      "quiet_after_seconds": 0,
+      "server_pings_received": 0,
+      "duration_seconds": 2.567
+    },
+    {
+      "case": "10_five_outstanding_probes",
+      "passed": true,
+      "exact_nonce_matches": 5,
+      "rtt_ms": [
+        49.659,
+        49.587,
+        49.563,
+        49.542,
+        49.526
+      ],
+      "outstanding_probes": 5,
+      "server_pings_received": 0,
+      "duration_seconds": 2.381
+    },
+    {
+      "case": "11_periodic_probes_then_quiet",
+      "passed": true,
+      "exact_nonce_matches": 4,
+      "rtt_ms": [
+        41.756,
+        33.24,
+        46.433,
+        26.084
+      ],
+      "interval_seconds": 1,
+      "quiet_after_seconds": 5,
+      "server_pings_received": 0,
+      "duration_seconds": 9.449
+    },
+    {
+      "case": "12_two_concurrent_connections",
+      "passed": true,
+      "exact_nonce_matches": 2,
+      "rtt_ms": [
+        32.857,
+        46.308
+      ],
+      "connections": 2,
+      "duration_seconds": 2.446
+    },
+    {
+      "case": "13_clean_reconnect_fresh_identity",
+      "passed": true,
+      "exact_nonce_matches": 2,
+      "rtt_ms": [
+        42.924,
+        28.115
+      ],
+      "abrupt_local_close": false,
+      "reused_session_identity": false,
+      "duration_seconds": 4.802
+    },
+    {
+      "case": "14_abrupt_reconnect_same_identity",
+      "passed": true,
+      "exact_nonce_matches": 2,
+      "rtt_ms": [
+        37.115,
+        41.022
+      ],
+      "abrupt_local_close": true,
+      "reused_session_identity": true,
+      "duration_seconds": 3.204
+    },
+    {
+      "case": "15_ping_after_unsolicited_pong",
+      "passed": true,
+      "exact_nonce_matches": 1,
+      "rtt_ms": [
+        35.024
+      ],
+      "sent_unsolicited_pong": true,
+      "duration_seconds": 2.349
+    }
+  ]
+}
