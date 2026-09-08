@@ -31,6 +31,11 @@ setup_cmux() { :; }
 setup_bb() { :; }
 setup_updates() { return "$INSTALL_TEST_UPDATE_STATUS"; }
 run_updates() { :; }
+run_codex_recovery() {
+  echo "codex-component:$1"
+  if [ "$1" = install ]; then return "$INSTALL_TEST_CODEX_STATUS"; fi
+  return 0
+}
 probe_bb() { return 0; }
 launch_hosts() { :; }
 do_check() { return 0; }
@@ -45,7 +50,7 @@ fi
 
 
 class InstallTests(unittest.TestCase):
-    def run_install(self, *, saved=None, args=(), status=0, answer="", terminal=False, update_status=0):
+    def run_install(self, *, saved=None, args=(), status=0, answer="", terminal=False, update_status=0, codex_status=0):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "watcher.py").touch()
@@ -60,13 +65,45 @@ class InstallTests(unittest.TestCase):
             script = root / "install.sh"
             script.write_text(source + MOCKS + '\ncase "$VERB" in\n' + dispatch)
             env = dict(os.environ, INSTALL_TEST_DIR=tmp, INSTALL_TEST_STATUS=str(status),
-                       INSTALL_TEST_TERMINAL=str(int(terminal)), INSTALL_TEST_UPDATE_STATUS=str(update_status))
+                       INSTALL_TEST_TERMINAL=str(int(terminal)), INSTALL_TEST_UPDATE_STATUS=str(update_status),
+                       INSTALL_TEST_CODEX_STATUS=str(codex_status))
             command = ["/bin/bash", str(script), *args]
             options = dict(env=env, capture_output=True, text=True, timeout=5,
                            start_new_session=True)
             result = subprocess.run(command, input=answer, **options)
             flag = state / "telemetry"
             return result, flag.read_text().strip() if flag.exists() else None
+
+    def test_codex_requires_explicit_opt_in(self):
+        result, _ = self.run_install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("codex-component:update", result.stdout)
+        self.assertNotIn("codex-component:install", result.stdout)
+        result, _ = self.run_install(args=("--codex-recovery",))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("codex-component:install", result.stdout)
+
+    def test_unavailable_codex_does_not_report_success(self):
+        result, _ = self.run_install(args=("--codex-recovery",), codex_status=1)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("All set.", result.stdout)
+
+    def test_codex_rollback_dispatches_without_reinstalling_watcher(self):
+        result, _ = self.run_install(args=("rollback-codex",))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("codex-component:rollback", result.stdout)
+        self.assertNotIn("codex-component:install", result.stdout)
+
+    def test_codex_check_dispatches_without_host_permission_prompts(self):
+        result, _ = self.run_install(args=("check-codex",))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("codex-component:check", result.stdout)
+        self.assertNotIn("codex-component:install", result.stdout)
+
+    def test_codex_opt_in_rejects_other_verbs(self):
+        result, _ = self.run_install(args=("update", "--codex-recovery"))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("only valid with install", result.stderr)
 
     def test_unattended_install_defaults_off(self):
         result, choice = self.run_install()

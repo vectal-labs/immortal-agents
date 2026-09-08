@@ -78,8 +78,12 @@ It preserves the watcher plist, Node configuration, webhook, telemetry preferenc
 and recovery state. Only the watcher is restarted; success requires a new PID and
 its startup log. If restart fails, the updated code stays in place and status tells
 you to retry `./install.sh update`. Private/development checkouts use manual Git
-updates followed by `./install.sh` instead. Releases needing installer or plist
-migrations must give separate reinstall instructions.
+updates followed by `./install.sh` instead. The managed-Codex updater runs the
+new release's repeatable component migration before restarting the watcher and
+retries failed migrations even when the repo version is already current. Existing
+users of the old updater still need the one-time bootstrap/reinstall described in
+[managed Codex recovery](codex-recovery.md). No stable Codex component has been
+published yet. Plist migrations still require explicit reinstall instructions.
 
 ### Publishing an important update
 

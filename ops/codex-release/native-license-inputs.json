@@ -1,0 +1,351 @@
+{
+  "schema_version": 1,
+  "upstream_commit": "3d2ee51ca2d5db578f328aa75e20aa22c0197c9a",
+  "review_complete": false,
+  "inputs": [
+    {
+      "name": "pcre2-10.45",
+      "url": "https://codeload.github.com/PCRE2Project/pcre2/tar.gz/refs/tags/pcre2-10.45",
+      "sha256": "35ce7d21f511c4a81d7079164077d25fbc41af00f19e1b547801df905c5f0fab",
+      "size": 3267927,
+      "format": "tar.gz",
+      "basis": "Observed shipped ripgrep PCRE2 version"
+    },
+    {
+      "name": "v8-15.0.245.2",
+      "url": "https://codeload.github.com/v8/v8/tar.gz/refs/tags/15.0.245.2",
+      "sha256": "164f3d3e0a8b4c02a386d3a88d1b1133d37e5c20be0239fecdcdde414a4340d5",
+      "size": 32838188,
+      "format": "tar.gz",
+      "basis": "Pinned Codex MODULE.bazel or patches/v8_module_deps.patch"
+    },
+    {
+      "name": "highway-1.2.0",
+      "url": "https://codeload.github.com/google/highway/tar.gz/refs/tags/1.2.0",
+      "sha256": "7e0be78b8318e8bdbf6fa545d2ecb4c90f947df03f7aadc42c1967f019e63343",
+      "size": 2234665,
+      "format": "tar.gz",
+      "basis": "Pinned Codex MODULE.bazel or patches/v8_module_deps.patch"
+    },
+    {
+      "name": "fast_float-8.0.2",
+      "url": "https://codeload.github.com/fastfloat/fast_float/tar.gz/refs/tags/v8.0.2",
+      "sha256": "e14a33089712b681d74d94e2a11362643bd7d769ae8f7e7caefe955f57f7eacd",
+      "size": 121232,
+      "format": "tar.gz",
+      "basis": "Pinned Codex MODULE.bazel or patches/v8_module_deps.patch"
+    },
+    {
+      "name": "simdutf-7.7.0",
+      "url": "https://codeload.github.com/simdutf/simdutf/tar.gz/refs/tags/v7.7.0",
+      "sha256": "0180de81a1dd48a87b8c0442ffa81734f3db91a7350914107a449935124e3c6f",
+      "size": 2231692,
+      "format": "tar.gz",
+      "basis": "Pinned Codex MODULE.bazel or patches/v8_module_deps.patch"
+    },
+    {
+      "name": "libcxx-LICENSE",
+      "url": "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libcxx.git/+/5abc7f839700f0f17338434e1c1c6a8c87c00c11/LICENSE.TXT?format=TEXT",
+      "sha256": "2df883eed85d488ef641ac22f3ce8afb495508b6f87c38847af95ddbf94aea70",
+      "size": 22272,
+      "format": "base64",
+      "basis": "Pinned Codex LLVM/ICU revision or published v8 crate source revision"
+    },
+    {
+      "name": "libcxxabi-LICENSE",
+      "url": "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libcxxabi.git/+/8f11bb1d4438d0239d0dfc1bd9456a9f31629dda/LICENSE.TXT?format=TEXT",
+      "sha256": "8d3456e92a31955fdaea9c32634e2e2d5abf87e32e862ca28f40b979e68ea612",
+      "size": 22276,
+      "format": "base64",
+      "basis": "Pinned Codex LLVM/ICU revision or published v8 crate source revision"
+    },
+    {
+      "name": "llvm-libc-LICENSE",
+      "url": "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libc.git/+/9309c117ebae84dd2f9df1ef99de4782162527d5/LICENSE.TXT?format=TEXT",
+      "sha256": "0cced642a3b6d411a42ad6e8ebd7942b4768a530c6e063fa41455a3600a82887",
+      "size": 20188,
+      "format": "base64",
+      "basis": "Pinned Codex LLVM/ICU revision or published v8 crate source revision"
+    },
+    {
+      "name": "icu-LICENSE",
+      "url": "https://chromium.googlesource.com/chromium/deps/icu.git/+/a86a32e67b8d1384b33f8fa48c83a6079b86f8cd/LICENSE?format=TEXT",
+      "sha256": "c5a4698576c4195d3b5869d409cb3d4be7fca00201a5f15ecb5b03aae07b2e2e",
+      "size": 35316,
+      "format": "base64",
+      "basis": "Pinned Codex LLVM/ICU revision or published v8 crate source revision"
+    },
+    {
+      "name": "rusty-v8-LICENSE",
+      "url": "https://raw.githubusercontent.com/denoland/rusty_v8/5c15a6995c9bb4bacd3e341b59fff32c909c80bf/LICENSE",
+      "sha256": "1c6356fb751d45f0c53093ebf8a7f5e580e802f51999178e19d60f3ec39e147d",
+      "size": 1078,
+      "format": "text",
+      "basis": "Pinned Codex LLVM/ICU revision or published v8 crate source revision"
+    },
+    {
+      "name": "abseil-20250814.1",
+      "url": "https://codeload.github.com/abseil/abseil-cpp/tar.gz/refs/tags/20250814.1",
+      "sha256": "1692f77d1739bacf3f94337188b78583cf09bab7e420d2dc6c5605a4f86785a1",
+      "size": 2235716,
+      "format": "tar.gz",
+      "basis": "Only resolved Abseil source.json in pinned MODULE.bazel.lock, descriptor digest and archive integrity verified"
+    },
+    {
+      "name": "ripgrep-lock-arbitrary-1.4.2",
+      "url": "https://static.crates.io/crates/arbitrary/arbitrary-1.4.2.crate",
+      "sha256": "c3d036a3c4ab069c7b410a2ce876bd74808d2d0888a82667669f8e783a898bf1",
+      "size": 38307,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    },
+    {
+      "name": "ripgrep-lock-bstr-1.13.0",
+      "url": "https://static.crates.io/crates/bstr/bstr-1.13.0.crate",
+      "sha256": "1f7dc094d718f2e1c1559ad110e27eeaae14a5465d3d56dd6dbd793079fbd530",
+      "size": 355737,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    },
+    {
+      "name": "ripgrep-lock-cc-1.2.67",
+      "url": "https://static.crates.io/crates/cc/cc-1.2.67.crate",
+      "sha256": "e17dd265a7d0f31ef544e1b20e03add05d3b45b491b633b10d67145d2acc1a38",
+      "size": 96261,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    },
+    {
+      "name": "ripgrep-lock-crossbeam-channel-0.5.16",
+      "url": "https://static.crates.io/crates/crossbeam-channel/crossbeam-channel-0.5.16.crate",
+      "sha256": "d85363c37faeca707aef026efa9f3b34d077bce547e48f770770625c6013679e",
+      "size": 93189,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    },
+    {
+      "name": "ripgrep-lock-crossbeam-deque-0.8.7",
+      "url": "https://static.crates.io/crates/crossbeam-deque/crossbeam-deque-0.8.7.crate",
+      "sha256": "5181e0de7b61eb03a81e347d6dd8797bae9da5146707b51077e2d71a54ec0ceb",
+      "size": 24141,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    },
+    {
+      "name": "ripgrep-lock-crossbeam-utils-0.8.22",
+      "url": "https://static.crates.io/crates/crossbeam-utils/crossbeam-utils-0.8.22.crate",
+      "sha256": "61803da095bee82a81bb1a452ecc25d3b2f1416d1897eb86430c6159ef717c17",
+      "size": 46874,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    },
+    {
+      "name": "ripgrep-lock-derive_arbitrary-1.4.2",
+      "url": "https://static.crates.io/crates/derive_arbitrary/derive_arbitrary-1.4.2.crate",
+      "sha256": "1e567bd82dcff979e4b03460c307b3cdc9e96fde3d73bed1496d2bc75d9dd62a",
+      "size": 12290,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    },
+    {
+      "name": "ripgrep-lock-encoding_rs_io-0.1.7",
+      "url": "https://static.crates.io/crates/encoding_rs_io/encoding_rs_io-0.1.7.crate",
+      "sha256": "1cc3c5651fb62ab8aa3103998dade57efdd028544bd300516baa31840c252a83",
+      "size": 16969,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    },
+    {
+      "name": "ripgrep-lock-getrandom-0.4.3",
+      "url": "https://static.crates.io/crates/getrandom/getrandom-0.4.3.crate",
+      "sha256": "300e883d756b2e4ec94e02791f39b04b522276138852cfc41d9fb7e904106099",
+      "size": 52437,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    },
+    {
+      "name": "ripgrep-lock-itoa-1.0.18",
+      "url": "https://static.crates.io/crates/itoa/itoa-1.0.18.crate",
+      "sha256": "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682",
+      "size": 15935,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    },
+    {
+      "name": "ripgrep-lock-jobserver-0.1.35",
+      "url": "https://static.crates.io/crates/jobserver/jobserver-0.1.35.crate",
+      "sha256": "1c00acbd29eabad4a2392fa0e921c874934dbbf4194312ad20f04a0ed67a3cb3",
+      "size": 28890,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    },
+    {
+      "name": "ripgrep-lock-lexopt-0.3.2",
+      "url": "https://static.crates.io/crates/lexopt/lexopt-0.3.2.crate",
+      "sha256": "803ec87c9cfb29b9d2633f20cba1f488db3fd53f2158b1024cbefb47ba05d413",
+      "size": 27407,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    },
+    {
+      "name": "ripgrep-lock-log-0.4.33",
+      "url": "https://static.crates.io/crates/log/log-0.4.33.crate",
+      "sha256": "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad",
+      "size": 52997,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    },
+    {
+      "name": "ripgrep-lock-memchr-2.8.3",
+      "url": "https://static.crates.io/crates/memchr/memchr-2.8.3.crate",
+      "sha256": "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98",
+      "size": 99165,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    },
+    {
+      "name": "ripgrep-lock-memmap2-0.9.11",
+      "url": "https://static.crates.io/crates/memmap2/memmap2-0.9.11.crate",
+      "sha256": "d1219ed1b7f229ee7104d281dd01d6802fe28bb6e95d292942c4daacdeb798c0",
+      "size": 35116,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    },
+    {
+      "name": "ripgrep-lock-pcre2-0.2.11",
+      "url": "https://static.crates.io/crates/pcre2/pcre2-0.2.11.crate",
+      "sha256": "9e970b0fcce0c7ee6ef662744ff711f21ccd6f11b7cf03cd187a80e89797fc67",
+      "size": 32440,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    },
+    {
+      "name": "ripgrep-lock-pcre2-sys-0.2.10",
+      "url": "https://static.crates.io/crates/pcre2-sys/pcre2-sys-0.2.10.crate",
+      "sha256": "18b9073c1a2549bd409bf4a32c94d903bb1a09bf845bc306ae148897fa0760a4",
+      "size": 771875,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    },
+    {
+      "name": "ripgrep-lock-pkg-config-0.3.33",
+      "url": "https://static.crates.io/crates/pkg-config/pkg-config-0.3.33.crate",
+      "sha256": "19f132c84eca552bf34cab8ec81f1c1dcc229b811638f9d283dceabe58c5569e",
+      "size": 21590,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    },
+    {
+      "name": "ripgrep-lock-quote-1.0.46",
+      "url": "https://static.crates.io/crates/quote/quote-1.0.46.crate",
+      "sha256": "dfbc457d0c7a0759a614551b11a6409e5951f6c7537be1f1b7682b9ae9230368",
+      "size": 31628,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    },
+    {
+      "name": "ripgrep-lock-regex-1.13.0",
+      "url": "https://static.crates.io/crates/regex/regex-1.13.0.crate",
+      "sha256": "2a0e75113e14dc5acb068cd0786884f214f1312650a3d36d269f5c4f3cdee8a2",
+      "size": 155857,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    },
+    {
+      "name": "ripgrep-lock-regex-automata-0.4.15",
+      "url": "https://static.crates.io/crates/regex-automata/regex-automata-0.4.15.crate",
+      "sha256": "1f388202e4b80542a0921078cc23b6333bcf1409c1e3f86404cae4766a6131db",
+      "size": 618603,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    },
+    {
+      "name": "ripgrep-lock-regex-syntax-0.8.11",
+      "url": "https://static.crates.io/crates/regex-syntax/regex-syntax-0.8.11.crate",
+      "sha256": "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4",
+      "size": 359055,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    },
+    {
+      "name": "ripgrep-lock-serde_json-1.0.150",
+      "url": "https://static.crates.io/crates/serde_json/serde_json-1.0.150.crate",
+      "sha256": "e8014e44b4736ed0538adeecded0fce2a272f22dc9578a7eb6b2d9993c74cfb9",
+      "size": 155574,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    },
+    {
+      "name": "ripgrep-lock-shlex-2.0.1",
+      "url": "https://static.crates.io/crates/shlex/shlex-2.0.1.crate",
+      "sha256": "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba",
+      "size": 19332,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    },
+    {
+      "name": "ripgrep-lock-syn-2.0.119",
+      "url": "https://static.crates.io/crates/syn/syn-2.0.119.crate",
+      "sha256": "872831b642d1a07999a962a351ed35b955ea2cfc8f3862091e2a240a84f17297",
+      "size": 307407,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    },
+    {
+      "name": "ripgrep-lock-tikv-jemalloc-sys-0.7.1_5.3.1-0-g81034ce1f1373e37dc865038e1bc8eeecf559ce8",
+      "url": "https://static.crates.io/crates/tikv-jemalloc-sys/tikv-jemalloc-sys-0.7.1+5.3.1-0-g81034ce1f1373e37dc865038e1bc8eeecf559ce8.crate",
+      "sha256": "1a2825c78386b4ae0314074867860ba9577875de945f05992c38815cbec327f0",
+      "size": 1037885,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    },
+    {
+      "name": "ripgrep-lock-tikv-jemallocator-0.7.0",
+      "url": "https://static.crates.io/crates/tikv-jemallocator/tikv-jemallocator-0.7.0.crate",
+      "sha256": "249f09e49ab1609436f34c776e84231bead18d6a955f119f939bdc1d847561bd",
+      "size": 14004,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    },
+    {
+      "name": "ripgrep-lock-unicode-ident-1.0.24",
+      "url": "https://static.crates.io/crates/unicode-ident/unicode-ident-1.0.24.crate",
+      "sha256": "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75",
+      "size": 49298,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    },
+    {
+      "name": "ripgrep-lock-winapi-util-0.1.11",
+      "url": "https://static.crates.io/crates/winapi-util/winapi-util-0.1.11.crate",
+      "sha256": "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22",
+      "size": 13368,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    },
+    {
+      "name": "ripgrep-lock-windows-link-0.2.1",
+      "url": "https://static.crates.io/crates/windows-link/windows-link-0.2.1.crate",
+      "sha256": "f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5",
+      "size": 6133,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    },
+    {
+      "name": "ripgrep-lock-windows-sys-0.61.2",
+      "url": "https://static.crates.io/crates/windows-sys/windows-sys-0.61.2.crate",
+      "sha256": "ae137229bcbd6cdf0f7b80a31df61766145077ddf49416a728b02cb3921ff3fc",
+      "size": 2517186,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    },
+    {
+      "name": "ripgrep-lock-zmij-1.0.23",
+      "url": "https://static.crates.io/crates/zmij/zmij-1.0.23.crate",
+      "sha256": "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b",
+      "size": 28612,
+      "format": "tar.gz",
+      "basis": "Notice/source superset from pinned ripgrep 15.2.0 Cargo.lock. Includes build-only and other-platform crates; not evidence of actual prebuilt helper linkage."
+    }
+  ]
+}

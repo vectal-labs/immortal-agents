@@ -1,0 +1,36 @@
+{
+  "version": "0.153.4+wake.1",
+  "upstream_version": "0.153.4",
+  "upstream_url": "https://github.com/openai/codex.git",
+  "upstream_commit": "3d2ee51ca2d5db578f328aa75e20aa22c0197c9a",
+  "target": "aarch64-apple-darwin",
+  "rust_version": "1.97.1",
+  "patches": [
+    {
+      "path": "docs/experiments/0019-codex-wake-recovery.patch",
+      "sha256": "aa3e68588d12777bc9f698c312b88106a49c10bf1500a5ef4cf83dd2c79088d9"
+    },
+    {
+      "path": "docs/experiments/0019-codex-release-metadata.patch",
+      "sha256": "31aa652087ba71f03b40dde0e4bbdb3e6f57803ca2547714ead3e87ddb85461e"
+    }
+  ],
+  "helper_sources": [
+    {
+      "name": "zsh",
+      "url": "https://codeload.github.com/zsh-users/zsh/tar.gz/77045ef899e53b9598bebc5a41db93a548a40ca6",
+      "sha256": "4dbbd45e64b4afa03d7cb363c2b1583619187f3d1508707fc532e4a77d5e6597",
+      "size": 4118906,
+      "root": "zsh-77045ef899e53b9598bebc5a41db93a548a40ca6",
+      "patch": "codex-rs/shell-escalation/patches/zsh-exec-wrapper.patch",
+      "patch_sha256": "696b7d923b8071554d00e811afb9a08fcad4baada796f7314d12ecd72d06152c"
+    },
+    {
+      "name": "ripgrep",
+      "url": "https://codeload.github.com/BurntSushi/ripgrep/tar.gz/refs/tags/15.2.0",
+      "sha256": "7605249d3eb0d5f170e3414498e3344e26b1e7a147aec518b57090b80036a562",
+      "size": 606519,
+      "root": "ripgrep-15.2.0"
+    }
+  ]
+}

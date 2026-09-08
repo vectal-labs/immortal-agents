@@ -95,6 +95,48 @@ def restart_watcher(state_dir):
     raise updates.UpdateError("Code updated, but watcher startup was not confirmed. Run ./install.sh update again or inspect watcher logs")
 
 
+
+def check_unchanged(repo, expected):
+    try:
+        unchanged = check_checkout(repo) == expected
+    except updates.UpdateError as exc:
+        raise updates.UpdateError("Checkout changed during update; local edits were preserved. "
+                                  "Watcher was not restarted. Finish your edits, then retry ./install.sh update") from exc
+    if not unchanged:
+        raise updates.UpdateError("Checkout commit changed during update; local work was preserved. "
+                                  "Watcher was not restarted. Inspect the checkout before retrying")
+
+
+def migrate_components(repo, state_dir, state, home=None, expected_commit=None):
+    """Run the installed release's migration code, not cached pre-update imports."""
+    path = Path(repo) / "immortal/core/install_migrations.py"
+    if not path.is_file():
+        if updates.version(updates.installed_version(repo)) >= (0, 2, 0):
+            raise updates.UpdateError("Release is missing component migrations; update incomplete")
+        return ""
+    state["migration_required"] = True
+    updates.save_state(state_dir, state)
+    expected_commit = expected_commit or check_checkout(repo)
+    check_unchanged(repo, expected_commit)
+    command = [sys.executable, "-m", "immortal.core.install_migrations", "--repo", str(repo)]
+    if home is not None:
+        command += ["--home", str(home)]
+    try:
+        result = subprocess.run(command, cwd=repo, capture_output=True, text=True, timeout=900,
+                                env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+    except subprocess.TimeoutExpired as exc:
+        raise updates.UpdateError("Component migration timed out; update remains incomplete. "
+                                  "Inspect ./install.sh status, then retry ./install.sh update") from exc
+    if result.returncode:
+        raise updates.UpdateError("Component migration failed; inspect ./install.sh status. "
+                                  "Run ./install.sh update again. " + result.stderr[-1500:].strip())
+    check_unchanged(repo, expected_commit)
+    state["migration_required"] = False
+    state["migration_commit"] = expected_commit
+    updates.save_state(state_dir, state)
+    return result.stdout.strip()
+
+
 def apply(repo=updates.REPO, state_dir=STATE_DIR, home=None):
     repo = Path(repo).resolve()
     check_checkout(repo)
@@ -108,7 +150,8 @@ def apply(repo=updates.REPO, state_dir=STATE_DIR, home=None):
         release = releases[0]
         current = updates.version(updates.installed_version(repo))
         if updates.version(release["version"]) <= current and not state.get("restart_required"):
-            return "Already at or ahead of the latest public release"
+            component = migrate_components(repo, state_dir, state, home, expected_commit=before)
+            return "Already at or ahead of the latest public release" + ("; " + component if component else "")
         if updates.version(release["version"]) < current:
             raise updates.UpdateError("Refusing to downgrade this checkout")
         if not updates.published(release):
@@ -127,6 +170,11 @@ def apply(repo=updates.REPO, state_dir=STATE_DIR, home=None):
             raise updates.UpdateError("Release installer is invalid")
         for path in ("watcher.py", "immortal/core/updates.py", "immortal/core/updater.py"):
             git(repo, "cat-file", "-e", target + ":" + path)
+        if updates.version(shipped) >= (0, 2, 0):
+            try:
+                git(repo, "cat-file", "-e", target + ":immortal/core/install_migrations.py")
+            except updates.UpdateError as exc:
+                raise updates.UpdateError("Release is missing component migrations; checkout unchanged") from exc
         if check_checkout(repo) != before:
             raise updates.UpdateError("Checkout changed while fetching; retry after other work finishes")
         state["restart_required"] = True
@@ -135,6 +183,13 @@ def apply(repo=updates.REPO, state_dir=STATE_DIR, home=None):
             git(repo, "merge", "--ff-only", "--no-overwrite-ignore", target)
         if git(repo, "rev-parse", "HEAD") != target:
             raise updates.UpdateError("Checkout changed during update; watcher was not restarted")
+        component = migrate_components(repo, state_dir, state, home, expected_commit=target)
+        try:
+            check_unchanged(repo, target)
+        except updates.UpdateError:
+            state["migration_required"] = True
+            updates.save_state(state_dir, state)
+            raise
         restart_watcher(state_dir)
         state["restart_required"] = False
         state["installed_commit"] = target
@@ -142,7 +197,8 @@ def apply(repo=updates.REPO, state_dir=STATE_DIR, home=None):
         state["available"] = None
         state.pop("check_error", None)
         updates.save_state(state_dir, state)
-        return f"Updated to {release['version']}; watcher restart confirmed. Other agents and settings were left alone."
+        return (f"Updated to {release['version']}; watcher restart confirmed. Running agents were left alone."
+                + (" " + component if component else ""))
 
 
 def main():

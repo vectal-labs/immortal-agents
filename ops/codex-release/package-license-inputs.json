@@ -1,0 +1,533 @@
+{
+  "schema_version": 1,
+  "upstream_commit": "3d2ee51ca2d5db578f328aa75e20aa22c0197c9a",
+  "review_complete": false,
+  "inputs": [
+    {
+      "basis": "Exact published crate .cargo_vcs_info.json commit; repository from Cargo.toml. Source archive origin and SHA-256 retained; license texts copied. Complete recursive notice capture is evidence, not release clearance.",
+      "format": "tar.gz",
+      "name": "whatisinternet-inflector-a4a95eac75043f4bffb127c7c8ec886b5b106053",
+      "packages": [
+        "Inflector@0.11.4"
+      ],
+      "sha256": "3765d5f6b5ad8908ba7bbce9b2b5c0140d02ed5cd320c5070bb914843d80c790",
+      "size": 23192,
+      "url": "https://codeload.github.com/whatisinternet/inflector/tar.gz/a4a95eac75043f4bffb127c7c8ec886b5b106053",
+      "retain_source": false
+    },
+    {
+      "basis": "Exact published crate .cargo_vcs_info.json commit; repository from Cargo.toml. Source archive origin and SHA-256 retained; license texts copied. Complete recursive notice capture is evidence, not release clearance.",
+      "format": "tar.gz",
+      "name": "str4d-rage-1465e602c83c5e4d3db8f58d9bdfc2a10063f90d",
+      "packages": [
+        "age@0.11.2"
+      ],
+      "sha256": "eb16ffbf16d47ed9a1fc772a9c60c531377053bc093ed054d5b7c8bd14a0be99",
+      "size": 1661882,
+      "url": "https://codeload.github.com/str4d/rage/tar.gz/1465e602c83c5e4d3db8f58d9bdfc2a10063f90d",
+      "retain_source": false
+    },
+    {
+      "basis": "Exact published crate .cargo_vcs_info.json commit; repository from Cargo.toml. Source archive origin and SHA-256 retained; license texts copied. Complete recursive notice capture is evidence, not release clearance.",
+      "format": "tar.gz",
+      "name": "str4d-rage-17446612f865c705e44fe392d9d41dd102fed137",
+      "packages": [
+        "age-core@0.11.0"
+      ],
+      "sha256": "363e5c48d600b09a12c7ac69579e6d347ff81213f2c9cd4b2fc0c6bad00d5ef9",
+      "size": 1659604,
+      "url": "https://codeload.github.com/str4d/rage/tar.gz/17446612f865c705e44fe392d9d41dd102fed137",
+      "retain_source": false
+    },
+    {
+      "basis": "Exact published crate .cargo_vcs_info.json commit; repository from Cargo.toml. Source archive origin and SHA-256 retained; license texts copied. Complete recursive notice capture is evidence, not release clearance.",
+      "format": "tar.gz",
+      "name": "rusticata-asn1-rs-a20e5f7319c896737ad0f2557037817b91ad854f",
+      "packages": [
+        "asn1-rs-impl@0.2.0"
+      ],
+      "sha256": "4d191cb8e101a853a54ce3054c2737deae7f6b853dbdb7fe372dff5d38b736c6",
+      "size": 91914,
+      "url": "https://codeload.github.com/rusticata/asn1-rs/tar.gz/a20e5f7319c896737ad0f2557037817b91ad854f",
+      "retain_source": false
+    },
+    {
+      "basis": "Exact published crate .cargo_vcs_info.json commit; repository from Cargo.toml. Source archive origin and SHA-256 retained; license texts copied. Complete recursive notice capture is evidence, not release clearance.",
+      "format": "tar.gz",
+      "name": "Nugine-simd-d74c030d9dc4f3cae02146d1f497ff62726ef09a",
+      "packages": [
+        "base64-simd@0.8.0",
+        "vsimd@0.8.0"
+      ],
+      "sha256": "91d0c990576a82c9fc29a63a67b71c0423cdb9d0dcb62e4ff759813816eaf078",
+      "size": 69877,
+      "url": "https://codeload.github.com/Nugine/simd/tar.gz/d74c030d9dc4f3cae02146d1f497ff62726ef09a",
+      "retain_source": false
+    },
+    {
+      "basis": "Exact published crate .cargo_vcs_info.json commit; repository from Cargo.toml. Source archive origin and SHA-256 retained; license texts copied. Complete recursive notice capture is evidence, not release clearance.",
+      "format": "tar.gz",
+      "name": "madsmtm-objc2-b4167b582b2f75f9a1be75495c41b765344fd03c",
+      "packages": [
+        "block2@0.6.2",
+        "objc2@0.6.3"
+      ],
+      "sha256": "5a1d3a8562cc03f3675b6a27234eb70dbd2189bd307af218e23b4023f0e01c46",
+      "size": 1209698,
+      "url": "https://codeload.github.com/madsmtm/objc2/tar.gz/b4167b582b2f75f9a1be75495c41b765344fd03c",
+      "retain_source": false
+    },
+    {
+      "basis": "Exact published crate .cargo_vcs_info.json commit; repository from Cargo.toml. Source archive origin and SHA-256 retained; license texts copied. Complete recursive notice capture is evidence, not release clearance.",
+      "format": "tar.gz",
+      "name": "projectfluent-fluent-langneg-rs-7fdc590466ea63ca2367ac10fb1b881fe561f1a8",
+      "packages": [
+        "fluent-langneg@0.13.1"
+      ],
+      "sha256": "6aeabb1648625bcd42275642f1a4a194302de9af239f29386258ff4d2eb77ab3",
+      "size": 14685,
+      "url": "https://codeload.github.com/projectfluent/fluent-langneg-rs/tar.gz/7fdc590466ea63ca2367ac10fb1b881fe561f1a8",
+      "retain_source": false
+    },
+    {
+      "basis": "Exact published crate .cargo_vcs_info.json commit; repository from Cargo.toml. Source archive origin and SHA-256 retained; license texts copied. Complete recursive notice capture is evidence, not release clearance.",
+      "format": "tar.gz",
+      "name": "Michael-F-Bryan-include_dir-d742c6fffce99ee89da91b934e7ce6fb2a82680c",
+      "packages": [
+        "include_dir@0.7.4",
+        "include_dir_macros@0.7.4"
+      ],
+      "sha256": "69bc614f22f87e0eff594be046ef4587314f3459911ad574040facf8ff263b05",
+      "size": 10229,
+      "url": "https://codeload.github.com/Michael-F-Bryan/include_dir/tar.gz/d742c6fffce99ee89da91b934e7ce6fb2a82680c",
+      "retain_source": false
+    },
+    {
+      "basis": "Exact published crate .cargo_vcs_info.json commit; repository from Cargo.toml. Source archive origin and SHA-256 retained; license texts copied. Complete recursive notice capture is evidence, not release clearance.",
+      "format": "tar.gz",
+      "name": "zbraniecki-pluralrules-d0715d5b7cca72e228d6e6c4de154bd30dfdd06a",
+      "packages": [
+        "intl_pluralrules@7.0.2"
+      ],
+      "sha256": "3bae6f33b807841191383261b7615323a3969e713118d09a5525b368503186c1",
+      "size": 53859,
+      "url": "https://codeload.github.com/zbraniecki/pluralrules/tar.gz/d0715d5b7cca72e228d6e6c4de154bd30dfdd06a",
+      "retain_source": false
+    },
+    {
+      "basis": "Exact published crate .cargo_vcs_info.json commit; repository from Cargo.toml. Source archive origin and SHA-256 retained; license texts copied. Complete recursive notice capture is evidence, not release clearance.",
+      "format": "tar.gz",
+      "name": "madsmtm-objc2-7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+      "packages": [
+        "objc2-app-kit@0.3.2",
+        "objc2-core-foundation@0.3.2",
+        "objc2-core-graphics@0.3.2",
+        "objc2-foundation@0.3.2"
+      ],
+      "sha256": "a6685e9b30da4c2b9ed807e8344d7248447daf1d5ab5b7af4fa3755545f96a4d",
+      "size": 1309694,
+      "url": "https://codeload.github.com/madsmtm/objc2/tar.gz/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+      "retain_source": false
+    },
+    {
+      "basis": "Exact published crate .cargo_vcs_info.json commit; repository from Cargo.toml. Source archive origin and SHA-256 retained; license texts copied. Complete recursive notice capture is evidence, not release clearance.",
+      "format": "tar.gz",
+      "name": "madsmtm-objc2-8d214f5477365ffcbcbb7de058c86ed9a518efb7",
+      "packages": [
+        "objc2-encode@4.1.0"
+      ],
+      "sha256": "c58f920fbc97c7f21b3af0f89d713188384ff012fd4cdfa2b6242e2952bf1a7d",
+      "size": 1058350,
+      "url": "https://codeload.github.com/madsmtm/objc2/tar.gz/8d214f5477365ffcbcbb7de058c86ed9a518efb7",
+      "retain_source": false
+    },
+    {
+      "basis": "Exact published crate .cargo_vcs_info.json commit; repository from Cargo.toml. Source archive origin and SHA-256 retained; license texts copied. Complete recursive notice capture is evidence, not release clearance.",
+      "format": "tar.gz",
+      "name": "open-telemetry-opentelemetry-rust-285dc925f98403ff426acc70968f104dc820d4f2",
+      "packages": [
+        "opentelemetry@0.31.0",
+        "opentelemetry-http@0.31.0",
+        "opentelemetry-otlp@0.31.0",
+        "opentelemetry-proto@0.31.0",
+        "opentelemetry-semantic-conventions@0.31.0",
+        "opentelemetry_sdk@0.31.0"
+      ],
+      "sha256": "1c1d57f22e360abcc6ae5f215f6cc1132cd6858cc43e45afa4e6a6b1bd18b987",
+      "size": 725609,
+      "url": "https://codeload.github.com/open-telemetry/opentelemetry-rust/tar.gz/285dc925f98403ff426acc70968f104dc820d4f2",
+      "retain_source": false
+    },
+    {
+      "basis": "Exact published crate .cargo_vcs_info.json commit; repository from Cargo.toml. Source archive origin and SHA-256 retained; license texts copied. Complete recursive notice capture is evidence, not release clearance.",
+      "format": "tar.gz",
+      "name": "open-telemetry-opentelemetry-rust-00f97c948e95beb7b2c966fcdb5f946c2a89baeb",
+      "packages": [
+        "opentelemetry-appender-tracing@0.31.1"
+      ],
+      "sha256": "a0bb78433ce28cd05d972b7471853219684f3880bd9ee3101c0478e2d744d9a2",
+      "size": 725764,
+      "url": "https://codeload.github.com/open-telemetry/opentelemetry-rust/tar.gz/00f97c948e95beb7b2c966fcdb5f946c2a89baeb",
+      "retain_source": false
+    },
+    {
+      "basis": "Exact published crate .cargo_vcs_info.json commit; repository from Cargo.toml. Source archive origin and SHA-256 retained; license texts copied. Complete recursive notice capture is evidence, not release clearance. Missing repository metadata recovered from related crate repository and verified by matching crate manifest at the recorded commit.",
+      "format": "tar.gz",
+      "name": "facebook-starlark-rust-8978f3cd91b2908e1e61f6b58f84293097abf8f1",
+      "packages": [
+        "pagable@0.4.1",
+        "pagable_derive@0.4.1"
+      ],
+      "sha256": "597e02584002c3dc383665647602ac9906b39ba1a70a243c4b95f0ed0bb010eb",
+      "size": 1972100,
+      "url": "https://codeload.github.com/facebook/starlark-rust/tar.gz/8978f3cd91b2908e1e61f6b58f84293097abf8f1",
+      "retain_source": false
+    },
+    {
+      "basis": "Exact published crate .cargo_vcs_info.json commit; repository from Cargo.toml. Source archive origin and SHA-256 retained; license texts copied. Complete recursive notice capture is evidence, not release clearance.",
+      "format": "tar.gz",
+      "name": "stepancheg-rust-protoc-bin-vendored-895c0433c3727a552970ce961e398e20e52d6353",
+      "packages": [
+        "protoc-bin-vendored@3.2.0",
+        "protoc-bin-vendored-linux-aarch_64@3.2.0",
+        "protoc-bin-vendored-linux-ppcle_64@3.2.0",
+        "protoc-bin-vendored-linux-s390_64@3.2.0",
+        "protoc-bin-vendored-linux-x86_32@3.2.0",
+        "protoc-bin-vendored-linux-x86_64@3.2.0",
+        "protoc-bin-vendored-macos-aarch_64@3.2.0",
+        "protoc-bin-vendored-macos-x86_64@3.2.0",
+        "protoc-bin-vendored-win32@3.2.0"
+      ],
+      "sha256": "5705c65ac9276c7549c5cc36603b17310187fb20ee3d7c6cab44cab651927918",
+      "size": 27616452,
+      "url": "https://codeload.github.com/stepancheg/rust-protoc-bin-vendored/tar.gz/895c0433c3727a552970ce961e398e20e52d6353",
+      "retain_source": false
+    },
+    {
+      "basis": "Exact published crate .cargo_vcs_info.json commit; repository from Cargo.toml. Source archive origin and SHA-256 retained; license texts copied. Complete recursive notice capture is evidence, not release clearance.",
+      "format": "tar.gz",
+      "name": "plabayo-rama-4733273a10a791762e2b7727850032b0c9b8536d",
+      "packages": [
+        "rama-core@0.3.0-alpha.4",
+        "rama-dns@0.3.0-alpha.4",
+        "rama-error@0.3.0-alpha.4",
+        "rama-http@0.3.0-alpha.4",
+        "rama-http-backend@0.3.0-alpha.4",
+        "rama-http-core@0.3.0-alpha.4",
+        "rama-http-headers@0.3.0-alpha.4",
+        "rama-http-types@0.3.0-alpha.4",
+        "rama-macros@0.3.0-alpha.4",
+        "rama-net@0.3.0-alpha.4",
+        "rama-socks5@0.3.0-alpha.4",
+        "rama-tcp@0.3.0-alpha.4",
+        "rama-tls-rustls@0.3.0-alpha.4",
+        "rama-udp@0.3.0-alpha.4",
+        "rama-unix@0.3.0-alpha.4",
+        "rama-utils@0.3.0-alpha.4"
+      ],
+      "sha256": "4f974216212aa78b589d4c6d50f66c4bed68b478ca04cf28a5db5450853a18f3",
+      "size": 16326693,
+      "url": "https://codeload.github.com/plabayo/rama/tar.gz/4733273a10a791762e2b7727850032b0c9b8536d",
+      "retain_source": false
+    },
+    {
+      "basis": "Exact published crate .cargo_vcs_info.json commit; repository from Cargo.toml. Source archive origin and SHA-256 retained; license texts copied. Complete recursive notice capture is evidence, not release clearance.",
+      "format": "tar.gz",
+      "name": "modelcontextprotocol-rust-sdk-fd14830a193a7bb9cf232ce3a6d0e544dc7a7a41",
+      "packages": [
+        "rmcp@3.1.3",
+        "rmcp-macros@3.1.3"
+      ],
+      "sha256": "339e784c853659e27982ec67b6c76fcde8f50dcbeb9403d8e1e8b18e29c8e52c",
+      "size": 653567,
+      "url": "https://codeload.github.com/modelcontextprotocol/rust-sdk/tar.gz/fd14830a193a7bb9cf232ce3a6d0e544dc7a7a41",
+      "retain_source": false
+    },
+    {
+      "basis": "Exact published crate .cargo_vcs_info.json commit; repository from Cargo.toml. Source archive origin and SHA-256 retained; license texts copied. Complete recursive notice capture is evidence, not release clearance.",
+      "format": "tar.gz",
+      "name": "Marwes-schemafy-5f835025d16d691f168315dda93efc52ae1e4e5e",
+      "packages": [
+        "schemafy_core@0.5.2",
+        "schemafy_lib@0.5.2"
+      ],
+      "sha256": "2f4a0883e402329e2007c2ef54f5d634a3767e5ea7a07215f368b21c17f0c4d3",
+      "size": 70198,
+      "url": "https://codeload.github.com/Marwes/schemafy/tar.gz/5f835025d16d691f168315dda93efc52ae1e4e5e",
+      "retain_source": false
+    },
+    {
+      "basis": "Exact published crate .cargo_vcs_info.json commit; repository from Cargo.toml. Source archive origin and SHA-256 retained; license texts copied. Complete recursive notice capture is evidence, not release clearance.",
+      "format": "tar.gz",
+      "name": "facebookexperimental-rust-shed-756ae7daba100d194aa0260131937b7d96672549",
+      "packages": [
+        "sorted_vector_map@0.2.1"
+      ],
+      "sha256": "1a68aa07c81c42f2eb0a2bd2077c077f5affc623ed636a86c1dcfa041f9632cd",
+      "size": 451631,
+      "url": "https://codeload.github.com/facebookexperimental/rust-shed/tar.gz/756ae7daba100d194aa0260131937b7d96672549",
+      "retain_source": false
+    },
+    {
+      "basis": "Exact published crate .cargo_vcs_info.json commit; repository from Cargo.toml. Source archive origin and SHA-256 retained; license texts copied. Complete recursive notice capture is evidence, not release clearance.",
+      "format": "tar.gz",
+      "name": "facebook-starlark-rust-0c8d107ab963362ba47ee3ab9e0173bc39bd101d",
+      "packages": [
+        "starlark@0.14.2",
+        "starlark_derive@0.14.2",
+        "starlark_map@0.14.2"
+      ],
+      "sha256": "3476b10e6d620d14a77cd688d6e3a026126098308071b1d4b6139e03766f3671",
+      "size": 1971943,
+      "url": "https://codeload.github.com/facebook/starlark-rust/tar.gz/0c8d107ab963362ba47ee3ab9e0173bc39bd101d",
+      "retain_source": false
+    },
+    {
+      "basis": "Exact published crate .cargo_vcs_info.json commit; repository from Cargo.toml. Source archive origin and SHA-256 retained; license texts copied. Complete recursive notice capture is evidence, not release clearance.",
+      "format": "tar.gz",
+      "name": "hyperium-tonic-ed4bafc35af7a284357cf4e77e26b9c3eb0266ca",
+      "packages": [
+        "tonic-prost@0.14.3",
+        "tonic-prost-build@0.14.3"
+      ],
+      "sha256": "a7ea871f3d2c4c1e4647e57faf7a18b6b98c795d2b233aec2ffcb2887b9ec526",
+      "size": 38310710,
+      "url": "https://codeload.github.com/hyperium/tonic/tar.gz/ed4bafc35af7a284357cf4e77e26b9c3eb0266ca",
+      "retain_source": false
+    },
+    {
+      "basis": "Exact published crate .cargo_vcs_info.json commit; repository from Cargo.toml. Source archive origin and SHA-256 retained; license texts copied. Complete recursive notice capture is evidence, not release clearance.",
+      "format": "tar.gz",
+      "name": "Aleph-Alpha-ts-rs-1dce5297090804082e9639d2b7d851ba815aa359",
+      "packages": [
+        "ts-rs@11.1.0",
+        "ts-rs-macros@11.1.0"
+      ],
+      "sha256": "8d416573c2b1d9a8f9dda3c80aa3feaaf56784f9b15e1fce85cb5ae8ccfac85b",
+      "size": 93431,
+      "url": "https://codeload.github.com/Aleph-Alpha/ts-rs/tar.gz/1dce5297090804082e9639d2b7d851ba815aa359",
+      "retain_source": false
+    },
+    {
+      "basis": "Exact published crate .cargo_vcs_info.json commit; repository from Cargo.toml. Source archive origin and SHA-256 retained; license texts copied. Complete recursive notice capture is evidence, not release clearance.",
+      "format": "tar.gz",
+      "name": "qnighy-yasna.rs-b7e65f9a4c317494cce2d18ea02b3d6eaaea7985",
+      "packages": [
+        "yasna@0.5.2"
+      ],
+      "sha256": "d34b1995b71c7c72760d1a11ac18754c17129a1abf90317aa7ec1b2a6daa8f72",
+      "size": 59894,
+      "url": "https://codeload.github.com/qnighy/yasna.rs/tar.gz/b7e65f9a4c317494cce2d18ea02b3d6eaaea7985",
+      "retain_source": false
+    },
+    {
+      "basis": "Exact published crate .cargo_vcs_info.json commit; repository from Cargo.toml. Source archive origin and SHA-256 retained; license texts copied. Complete recursive notice capture is evidence, not release clearance.",
+      "format": "tar.gz",
+      "name": "etemesi254-zune-image-fa2c767a01d7d9373911d0bf63e0588553d67e0e",
+      "packages": [
+        "zune-jpeg@0.4.21"
+      ],
+      "sha256": "724beca98266bda37b938819cbf2be151ae8e1d7039788351db16ebd70bd5565",
+      "size": 124704220,
+      "url": "https://codeload.github.com/etemesi254/zune-image/tar.gz/fa2c767a01d7d9373911d0bf63e0588553d67e0e",
+      "retain_source": false
+    },
+    {
+      "basis": "Complete original text at the recorded published crate .cargo_vcs_info.json commit; source URL and SHA-256 preserved. This source file carries the full original MIT copyright and permission notice in its header.",
+      "format": "text",
+      "name": "rust-bitcoin-rust-bech32-d12513f1e3768a7f2a2e1b4d650139eb92a4ae9b-src-lib.rs",
+      "packages": [
+        "bech32@0.9.1"
+      ],
+      "sha256": "8a4efd91229148ea1e86234c9513628910a7419a3c8a6500e8ce18149b8f3a85",
+      "size": 33626,
+      "url": "https://raw.githubusercontent.com/rust-bitcoin/rust-bech32/d12513f1e3768a7f2a2e1b4d650139eb92a4ae9b/src/lib.rs",
+      "retain_source": false
+    },
+    {
+      "basis": "Complete original text at the recorded published crate .cargo_vcs_info.json commit; source URL and SHA-256 preserved.",
+      "format": "text",
+      "name": "rust-bakery-cookie-factory-d36b805dbd7dd65f2df947235c5bcc573afe2c76-LICENSES-MIT.txt",
+      "packages": [
+        "cookie-factory@0.3.3"
+      ],
+      "sha256": "d09216dc1ea5f273997667935a8d6514d80f00b89fb6954ecc3a43e0a6e360de",
+      "size": 1065,
+      "url": "https://raw.githubusercontent.com/rust-bakery/cookie-factory/d36b805dbd7dd65f2df947235c5bcc573afe2c76/LICENSES/MIT.txt",
+      "retain_source": false
+    },
+    {
+      "basis": "Complete original text at the recorded published crate .cargo_vcs_info.json commit; source URL and SHA-256 preserved.",
+      "format": "text",
+      "name": "akhilles-crc-catalog-b500ea693c552f8d946e290722a7b3ee8b9a7ee2-LICENSES-Apache-2.0.txt",
+      "packages": [
+        "crc-catalog@2.4.0"
+      ],
+      "sha256": "d3cdb764b98283ee7c3a3cea8d374e2a2957322374378d1f3263f4d512741fc3",
+      "size": 11346,
+      "url": "https://raw.githubusercontent.com/akhilles/crc-catalog/b500ea693c552f8d946e290722a7b3ee8b9a7ee2/LICENSES/Apache-2.0.txt",
+      "retain_source": false
+    },
+    {
+      "basis": "Complete original text at the recorded published crate .cargo_vcs_info.json commit; source URL and SHA-256 preserved.",
+      "format": "text",
+      "name": "akhilles-crc-catalog-b500ea693c552f8d946e290722a7b3ee8b9a7ee2-LICENSES-MIT.txt",
+      "packages": [
+        "crc-catalog@2.4.0"
+      ],
+      "sha256": "5ef8fcfb6cccec8fcae043c834099a60c8b7406408db576e026d2b7e67dc5cf5",
+      "size": 1073,
+      "url": "https://raw.githubusercontent.com/akhilles/crc-catalog/b500ea693c552f8d946e290722a7b3ee8b9a7ee2/LICENSES/MIT.txt",
+      "retain_source": false
+    },
+    {
+      "basis": "Complete original text at the recorded published crate .cargo_vcs_info.json commit; source URL and SHA-256 preserved.",
+      "format": "text",
+      "name": "etemesi254-zune-image-f8fbb123d5ed04441e8324a555bfcda0cb1bd28f-LICENSE-ZLIB",
+      "packages": [
+        "zune-core@0.4.12"
+      ],
+      "sha256": "7fa429541e55b1509909e058f2d21a37467e4958ec713b357f6e0cf9dc4ee352",
+      "size": 818,
+      "url": "https://raw.githubusercontent.com/etemesi254/zune-image/f8fbb123d5ed04441e8324a555bfcda0cb1bd28f/LICENSE-ZLIB",
+      "retain_source": false
+    },
+    {
+      "basis": "Complete original text at the recorded published crate .cargo_vcs_info.json commit; source URL and SHA-256 preserved.",
+      "format": "text",
+      "name": "etemesi254-zune-image-f8fbb123d5ed04441e8324a555bfcda0cb1bd28f-LICENSE.md",
+      "packages": [
+        "zune-core@0.4.12"
+      ],
+      "sha256": "c6dff146a9f31848ac296faa5a08a4253caf2c384c86f906dc99e7fc0a39cc8c",
+      "size": 357,
+      "url": "https://raw.githubusercontent.com/etemesi254/zune-image/f8fbb123d5ed04441e8324a555bfcda0cb1bd28f/LICENSE.md",
+      "retain_source": false
+    },
+    {
+      "name": "facebookexperimental-allocative-LICENSE-MIT",
+      "url": "https://raw.githubusercontent.com/facebookexperimental/allocative/c256f0bb074252ded51614aaa73a9a41cb38a2a4/LICENSE-MIT",
+      "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
+      "size": 1088,
+      "format": "text",
+      "packages": [
+        "allocative@0.3.6",
+        "allocative_derive@0.3.6"
+      ],
+      "basis": "Published crate omits VCS metadata. Crate source headers name this repository license; retrieved current repository license at recorded commit. Exact publication-to-commit relationship remains unverified.",
+      "source_mapping_unverified": true,
+      "retain_source": false
+    },
+    {
+      "name": "facebookexperimental-allocative-LICENSE-APACHE",
+      "url": "https://raw.githubusercontent.com/facebookexperimental/allocative/c256f0bb074252ded51614aaa73a9a41cb38a2a4/LICENSE-APACHE",
+      "sha256": "50e6751797c50dedd75ef1b8a0d9e42f5f8472e9fbce91f34718e9f97b0c780a",
+      "size": 11324,
+      "format": "text",
+      "packages": [
+        "allocative@0.3.6",
+        "allocative_derive@0.3.6"
+      ],
+      "basis": "Published crate omits VCS metadata. Crate source headers name this repository license; retrieved current repository license at recorded commit. Exact publication-to-commit relationship remains unverified.",
+      "source_mapping_unverified": true,
+      "retain_source": false
+    },
+    {
+      "name": "facebookincubator-gazebo-LICENSE-MIT",
+      "url": "https://raw.githubusercontent.com/facebookincubator/gazebo/7c9c7304a1dbd451e9e448749228e88de1c193ce/LICENSE-MIT",
+      "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
+      "size": 1088,
+      "format": "text",
+      "packages": [
+        "display_container@0.9.0"
+      ],
+      "basis": "Published crate omits VCS metadata. Crate source headers name this repository license; retrieved current repository license at recorded commit. Exact publication-to-commit relationship remains unverified.",
+      "source_mapping_unverified": true,
+      "retain_source": false
+    },
+    {
+      "name": "facebookincubator-gazebo-LICENSE-APACHE",
+      "url": "https://raw.githubusercontent.com/facebookincubator/gazebo/7c9c7304a1dbd451e9e448749228e88de1c193ce/LICENSE-APACHE",
+      "sha256": "50e6751797c50dedd75ef1b8a0d9e42f5f8472e9fbce91f34718e9f97b0c780a",
+      "size": 11324,
+      "format": "text",
+      "packages": [
+        "display_container@0.9.0"
+      ],
+      "basis": "Published crate omits VCS metadata. Crate source headers name this repository license; retrieved current repository license at recorded commit. Exact publication-to-commit relationship remains unverified.",
+      "source_mapping_unverified": true,
+      "retain_source": false
+    },
+    {
+      "name": "facebook-buck2-LICENSE-MIT",
+      "url": "https://raw.githubusercontent.com/facebook/buck2/173c0bc72b538c76a1cba3cbe65179170ce792e7/LICENSE-MIT",
+      "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
+      "size": 1088,
+      "format": "text",
+      "packages": [
+        "lock_free_hashtable@0.1.4",
+        "static_interner@0.1.2",
+        "strong_hash@0.1.0",
+        "strong_hash_derive@0.1.0"
+      ],
+      "basis": "Published crate omits VCS metadata. Crate source headers name this repository license; retrieved current repository license at recorded commit. Exact publication-to-commit relationship remains unverified.",
+      "source_mapping_unverified": true,
+      "retain_source": false
+    },
+    {
+      "name": "facebook-buck2-LICENSE-APACHE",
+      "url": "https://raw.githubusercontent.com/facebook/buck2/173c0bc72b538c76a1cba3cbe65179170ce792e7/LICENSE-APACHE",
+      "sha256": "50e6751797c50dedd75ef1b8a0d9e42f5f8472e9fbce91f34718e9f97b0c780a",
+      "size": 11324,
+      "format": "text",
+      "packages": [
+        "lock_free_hashtable@0.1.4",
+        "static_interner@0.1.2",
+        "strong_hash@0.1.0",
+        "strong_hash_derive@0.1.0"
+      ],
+      "basis": "Published crate omits VCS metadata. Crate source headers name this repository license; retrieved current repository license at recorded commit. Exact publication-to-commit relationship remains unverified.",
+      "source_mapping_unverified": true,
+      "retain_source": false
+    },
+    {
+      "name": "fxhash-apache-2.0",
+      "url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+      "size": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "format": "text",
+      "packages": [
+        "fxhash@0.2.1"
+      ],
+      "basis": "Exact crate lib.rs copyright header expressly offers Apache-2.0 and links apache.org license text. Original Rust Project copyright header also retained. Repository omits license texts.",
+      "source_mapping_unverified": true,
+      "retain_source": false
+    },
+    {
+      "name": "fax-maintainer-restored-mit-license-5d70a161e33b62305f8bce7af3f7fbd011cfaf5d",
+      "url": "https://raw.githubusercontent.com/pdf-rs/fax/5d70a161e33b62305f8bce7af3f7fbd011cfaf5d/LICENSE",
+      "sha256": "7101390b4c8edd752f4c0de47f35d61b44d9cf0ee8dd032115e25644e277cfff",
+      "size": 1075,
+      "format": "text",
+      "packages": [
+        "fax@0.2.6",
+        "fax_derive@0.2.0"
+      ],
+      "basis": "Supplemental upstream evidence: maintainer commit 5d70a161e33b62305f8bce7af3f7fbd011cfaf5d (2025-09-15) adds the previously omitted chosen MIT license text, with copyright dated to the initial 2021 commit. This LICENSE file was absent from the recorded crate source commit 40b226eb97b391355e971fd95a8dd532a4c127a0; see upstream commit explanation. Evidence capture does not itself grant release clearance.",
+      "retain_source": false
+    },
+    {
+      "name": "declared-apache-2.0",
+      "url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+      "size": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "format": "text",
+      "packages": [
+        "io_tee@0.1.1",
+        "eventsource-stream@0.2.3"
+      ],
+      "basis": "Exact published Cargo.toml declares MIT OR Apache-2.0 (io_tee README also declares this choice). Official Apache text retained as the declared license option; upstream contains no separate NOTICE file.",
+      "retain_source": false
+    }
+  ]
+}

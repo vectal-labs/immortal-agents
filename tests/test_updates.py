@@ -245,6 +245,12 @@ class UpdateCommandTests(unittest.TestCase):
         (self.repo / "install.sh").write_text("true\n")
         (self.repo / "immortal" / "core" / "updates.py").write_text("pass\n")
         (self.repo / "immortal" / "core" / "updater.py").write_text("pass\n")
+        (self.repo / "immortal/core/install_migrations.py").write_text(
+            "from pathlib import Path\nimport sys\n"
+            "home = Path(sys.argv[sys.argv.index('--home') + 1])\n"
+            "if (home / 'fail-migration').exists(): raise SystemExit('fixture migration failed')\n"
+            "(home / 'migration-completed').write_text('yes')\n"
+            "print('fixture components ready')\n")
         self.commit("initial")
         self.before = self.git("rev-parse", "HEAD")
         self.home = self.tmp / "home"
@@ -299,6 +305,107 @@ class UpdateCommandTests(unittest.TestCase):
         for name in ("state.json", "telemetry", "discord_webhook"):
             self.assertEqual((self.state / name).read_text(), "preserve")
         self.assertFalse(updates.load_state(self.state)["restart_required"])
+
+    def test_component_migration_runs_after_checkout_and_before_restart(self):
+        target = self.release()
+        def restart(state_dir):
+            self.assertEqual(self.git("rev-parse", "HEAD"), target)
+            self.assertTrue((self.home / "migration-completed").exists())
+        self.restart.side_effect = restart
+        self.assertIn("fixture components ready", self.apply())
+        self.assertFalse(updates.load_state(self.state)["migration_required"])
+
+    def test_component_failure_is_retryable_at_same_repo_version(self):
+        target = self.release()
+        (self.home / "fail-migration").touch()
+        with self.assertRaisesRegex(updates.UpdateError, "Component migration failed"):
+            self.apply()
+        self.assertEqual(self.git("rev-parse", "HEAD"), target)
+        self.restart.assert_not_called()
+        self.assertTrue(updates.load_state(self.state)["migration_required"])
+        (self.home / "fail-migration").unlink()
+        self.assertIn("confirmed", self.apply())
+        self.assertFalse(updates.load_state(self.state)["migration_required"])
+
+    def test_same_version_update_runs_component_migration(self):
+        self.release()
+        self.apply()
+        (self.home / "migration-completed").unlink()
+        self.restart.reset_mock()
+        self.assertIn("fixture components ready", self.apply())
+        self.assertTrue((self.home / "migration-completed").exists())
+        self.restart.assert_not_called()
+
+    def test_user_edit_during_migration_is_preserved_without_restart(self):
+        target = self.release()
+        real_run = subprocess.run
+        def edit_during_migration(command, **kwargs):
+            result = real_run(command, **kwargs)
+            if "immortal.core.install_migrations" in command:
+                (self.repo / "watcher.py").write_text("# concurrent user edit\n")
+            return result
+        with mock.patch.object(updater.subprocess, "run", side_effect=edit_during_migration):
+            with self.assertRaisesRegex(updates.UpdateError, "Checkout changed during update"):
+                self.apply()
+        self.assertEqual((self.repo / "watcher.py").read_text(), "# concurrent user edit\n")
+        self.assertEqual(self.git("rev-parse", "HEAD"), target)
+        self.restart.assert_not_called()
+        state = updates.load_state(self.state)
+        self.assertTrue(state["migration_required"])
+        self.assertTrue(state["restart_required"])
+        self.assertNotIn("installed_commit", state)
+
+    def test_same_version_concurrent_commit_cannot_be_marked_migrated(self):
+        target = self.release()
+        self.apply()
+        self.restart.reset_mock()
+        real_run = subprocess.run
+        def commit_during_migration(command, **kwargs):
+            result = real_run(command, **kwargs)
+            if "immortal.core.install_migrations" in command:
+                (self.repo / "user-work.txt").write_text("preserve this commit")
+                self.commit("concurrent user work")
+            return result
+        with mock.patch.object(updater.subprocess, "run", side_effect=commit_during_migration):
+            with self.assertRaisesRegex(updates.UpdateError, "commit changed"):
+                self.apply()
+        self.assertNotEqual(self.git("rev-parse", "HEAD"), target)
+        self.assertEqual((self.repo / "user-work.txt").read_text(), "preserve this commit")
+        self.assertTrue(updates.load_state(self.state)["migration_required"])
+        self.assertEqual(updates.load_state(self.state)["migration_commit"], target)
+        self.restart.assert_not_called()
+
+    def test_component_timeout_remains_retryable_without_claiming_success(self):
+        target = self.release()
+        real_run = subprocess.run
+        def timeout_migration(command, **kwargs):
+            if "immortal.core.install_migrations" in command:
+                raise subprocess.TimeoutExpired(command, 900)
+            return real_run(command, **kwargs)
+        with mock.patch.object(updater.subprocess, "run", side_effect=timeout_migration):
+            with self.assertRaisesRegex(updates.UpdateError, "migration timed out"):
+                self.apply()
+        state = updates.load_state(self.state)
+        self.assertTrue(state["migration_required"])
+        self.assertTrue(state["restart_required"])
+        self.assertEqual(self.git("rev-parse", "HEAD"), target)
+        self.restart.assert_not_called()
+        self.assertIn("confirmed", self.apply())
+        self.assertFalse(updates.load_state(self.state)["migration_required"])
+
+    def test_missing_new_release_migration_is_reported(self):
+        self.git("switch", "-c", "release-candidate")
+        (self.repo / "immortal/__init__.py").write_text('__version__ = "0.2.0"\n')
+        (self.repo / "immortal/core/install_migrations.py").unlink()
+        self.commit("invalid release without migration")
+        self.feed.return_value["releases"][0]["commit"] = self.git("rev-parse", "HEAD")
+        self.git("tag", "v0.2.0")
+        self.git("switch", "main")
+        self.git("fetch", "--no-tags", str(self.repo), "refs/tags/v0.2.0")
+        with self.assertRaisesRegex(updates.UpdateError, "missing component migrations"):
+            self.apply()
+        self.assertEqual(self.git("rev-parse", "HEAD"), self.before)
+        self.restart.assert_not_called()
 
     def test_dirty_checkout_or_unknown_remote_is_refused_before_fetch(self):
         (self.repo / "untracked").write_text("mine")

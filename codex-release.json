@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "available": false,
+  "reason": "The managed Codex build is not publicly available yet. Signing, notarization, physical wake, and clean-Mac validation must pass before publication."
+}

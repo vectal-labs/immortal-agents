@@ -223,6 +223,8 @@ def status(repo=REPO, state_dir=STATE_DIR):
         lines.append("No newer published release found at the last check")
     else:
         lines.append("Updates have not been checked successfully yet")
+    if state.get("migration_required"):
+        lines.append("Component update incomplete: run ./install.sh update again")
     if state.get("restart_required"):
         lines.append("Watcher restart required: run ./install.sh update again")
     if state.get("check_error"):

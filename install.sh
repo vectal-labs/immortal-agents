@@ -29,17 +29,22 @@ ARGS=("$@")
 VERB="install"
 DISCORD_URL=""
 TELEMETRY=""
+CODEX_RECOVERY=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    install|uninstall|status|logs|check|update|notification-test|discord-retry) VERB="$1" ;;
+    install|uninstall|status|logs|check|check-codex|update|notification-test|discord-retry|rollback-codex) VERB="$1" ;;
     --discord)
       [ $# -ge 2 ] || { echo "error: --discord needs a webhook URL" >&2; exit 1; }
       DISCORD_URL="$2"; shift ;;
+    --codex-recovery) CODEX_RECOVERY=on ;;
     --telemetry) TELEMETRY=on ;;
     --no-telemetry) TELEMETRY=off ;;
     -h|--help)
       sed -n '2,4p' "$0"
-      echo "  update              install the latest public release and restart only the watcher"
+      echo "  update              update the watcher and opted-in Codex recovery component"
+      echo "  --codex-recovery    enable the managed Codex build (explicit one-time opt-in)"
+      echo "  rollback-codex      restore the previous Codex selection"
+      echo "  check-codex         verify shell, BB and running Codex selection"
       echo "  notification-test   request a test notification from the update LaunchAgent"
       echo "  discord-retry       retry saved success alerts after fixing the webhook"
       exit 0 ;;
@@ -47,6 +52,11 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+
+if [ "$CODEX_RECOVERY" = on ] && [ "$VERB" != install ]; then
+  echo "error: --codex-recovery is only valid with install" >&2
+  exit 1
+fi
 
 loaded() { launchctl print "$DOMAIN/$1" >/dev/null 2>&1; }
 
@@ -109,6 +119,10 @@ probe_bb() { run_bb_runtime check "${1:-}"; }
 run_updates() {
   (cd "$REPO_DIR" && WATCHER_STATE_DIR="$STATE_DIR" PYTHONDONTWRITEBYTECODE=1 \
     "$(find_python3)" -m immortal.core.updates "$@" --repo "$REPO_DIR")
+}
+run_codex_recovery() {
+  (cd "$REPO_DIR" && PYTHONDONTWRITEBYTECODE=1 \
+    "$(find_python3)" -m immortal.core.codex_recovery "$@" --repo "$REPO_DIR")
 }
 setup_updates() { run_updates setup --python "$1"; }
 remove_updates() { run_updates remove; }
@@ -285,6 +299,7 @@ do_status() {
   if [ "$VERB" = status ]; then
     (cd "$REPO_DIR" && WATCHER_STATE_DIR="$STATE_DIR" python3 -m immortal.core.discord_outbox) || true
     run_updates status || true
+    run_codex_recovery status || true
     loaded "com.immortal-agents.updates" || warn "Update checker is not loaded. Run ./install.sh"
   fi
   return $rc
@@ -304,6 +319,12 @@ do_install() {
   python3_bin="$(command -v python3 || true)"
   [ -n "$python3_bin" ] || { echo "error: python3 not found on PATH" >&2; exit 1; }
   [ -f "$REPO_DIR/watcher.py" ] || { echo "error: watcher.py not found in $REPO_DIR" >&2; exit 1; }
+  # Explicit opt-in is checked before changing watcher installation state.
+  if [ "$CODEX_RECOVERY" = on ]; then
+    run_codex_recovery install || return $?
+  else
+    run_codex_recovery update || return $?
+  fi
 
   echo
   heading "immortal-agents installer"
@@ -417,7 +438,8 @@ do_uninstall() {
   rm -f "$PLIST"
   ok "Removed $PLIST"
   echo
-  heading "${GREEN}Uninstalled.${RESET} Nothing is running and nothing starts on reboot"
+  heading "${GREEN}Watcher uninstalled.${RESET} Watcher jobs no longer run or start on reboot"
+  echo "  Optional managed Codex selection is unchanged. Remove it with: ./install.sh rollback-codex"
   echo "  Kept $STATE_DIR (logs, state, Discord webhook). Delete it with: rm -rf $STATE_DIR"
   echo "  The macOS Automation grant for python3 stays. Remove it in System Settings > Privacy & Security > Automation"
   echo
@@ -432,6 +454,8 @@ do_logs() {
 case "$VERB" in
   install) do_install ;;
   uninstall) do_uninstall ;;
+  rollback-codex) run_codex_recovery rollback ;;
+  check-codex) run_codex_recovery check ;;
   status) do_status ;;
   logs) do_logs ;;
   check) do_check ;;
