@@ -2,6 +2,14 @@
   "schema": 1,
   "releases": [
     {
+      "version": "0.2.0",
+      "published_at": "2026-09-11",
+      "important": true,
+      "summary": "Steers active BB threads with keep going after every reconnect or wake, retries BB threads once their provider answers, and verifies the running watcher after updates.",
+      "commit": "161dac76200ff5be8ee61985d3ba4b1820d86f30",
+      "notes_url": "https://github.com/vectal-labs/immortal-agents/releases/tag/v0.2.0"
+    },
+    {
       "version": "0.1.0",
       "published_at": "2026-09-05",
       "important": true,
