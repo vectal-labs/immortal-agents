@@ -86,10 +86,15 @@ list`, since `thread show` omits `hasPendingInteraction`) cancels its nudge.
 `bb thread tell --mode auto --json` reports `sent` or `queued`.
 
 The episode, its candidates, and each reservation are saved in `state.json` before
-bb is called, so polls, crashes, and watcher restarts cannot repeat a nudge. A later
-distinct reconnect is a new episode and steers again. Episodes expire after 15 minutes.
-Logs: `steer_episode` (opened, snapshot, merged, expired) and `steer_sent`. Steers
-are not confirmed or announced on Discord.
+bb is called. Per-thread send history survives new episodes and watcher restarts.
+A thread gets no new nudge within two minutes of its last send. After that, a queued
+`keep going` or an earlier one without matching assistant output still blocks it;
+acceptance alone is not handling. Ended, rejected, or superseded requests stop
+blocking. Unreadable history is retried later; an ambiguous send stays pending.
+Skipped nudges are discarded for that episode, not delayed until the cooldown ends.
+Episodes expire after 15 minutes. Logs: `steer_episode` (opened, snapshot, merged,
+expired), `steer_sent`, and `steer_skipped` (`cooldown` or `pending`). Steers are not
+confirmed or announced on Discord.
 
 Limits: threads on other machines are never steered; unknown routes wait for both
 `api.anthropic.com` and `api.openai.com` to resolve; a wake is only seen while the

@@ -46,7 +46,13 @@ class ReconnectSteerTests(unittest.TestCase):
             returncode=0, stdout='{"ok":true,"delivery":"sent"}', stderr="")))
         self.threads = [thread("worker")]
         self.interactions = {}
+        self.events = {}
+        self.queues = {}
         self.now = datetime.now(timezone.utc)
+        for module in (watcher, revive, steering):
+            clock = self.enterContext(mock.patch.object(module, "datetime", wraps=datetime))
+            clock.now.side_effect = lambda *args: self.now
+        self.send.side_effect = self.record_send
         self.state = {"online": True, "outage_started_at": None, "revived": {},
                       "last_probe_at": now_iso(self.now - timedelta(seconds=10))}
         self.enterContext(mock.patch.object(watcher, "load_state", side_effect=lambda: self.state))
@@ -62,7 +68,32 @@ class ReconnectSteerTests(unittest.TestCase):
             return {"thread": shown}
         if args[:3] == ["thread", "interactions", "list"]:
             return self.interactions.get(args[3], [])
+        if args[:3] == ["thread", "queue", "list"]:
+            return self.queues.get(args[3], [])
+        if args[:2] == ["thread", "log"]:
+            return self.events.get(args[2], [])
         self.fail(f"Unexpected BB read: {args}")
+
+    def event(self, kind, data, ref="worker", turn="turn-1"):
+        events = self.events.setdefault(ref, [])
+        events.append({"seq": len(events) + 1, "createdAt": self.now.timestamp() * 1000,
+                       "type": kind, "scope": {"turnId": turn}, "data": data})
+
+    def record_send(self, args):
+        ref = args[2]
+        request = f"request-{len(self.events.get(ref, []))}"
+        self.event("client/turn/requested", {"requestId": request,
+            "input": [{"type": "text", "text": "keep going"}],
+            "target": {"kind": "auto", "expectedTurnId": "turn-1"}}, ref)
+        self.event("turn/input/accepted", {"clientRequestId": request}, ref)
+        return self.send.return_value
+
+    def advance(self, seconds):
+        self.now += timedelta(seconds=seconds)
+        self.clock.return_value += seconds
+
+    def progress(self, ref="worker"):
+        self.event("item/completed", {"item": {"type": "agentMessage", "text": "Continuing."}}, ref)
 
     def tells(self):
         return [call.args[0] for call in self.send.call_args_list if call.args[0][:2] == ["thread", "tell"]]
@@ -294,14 +325,41 @@ class ReconnectSteerTests(unittest.TestCase):
         self.tick()
         self.assertEqual(self.tells(), [tell("worker")])
 
+    def test_cloud_collector_reconnect_and_two_wakes_send_only_once(self):
+        # September 11: requests 1570/1572/1574 were accepted on the same turn,
+        # 45s then 132s apart, with no assistant output between them.
+        self.reconnect(60)
+        self.advance(45)
+        self.wake(seconds=12)
+        self.advance(132)
+        self.wake(seconds=12)
+        self.assertEqual(self.tells(), [tell("worker")])
+
+    def test_cooldown_survives_restart_and_allows_new_trigger_at_two_minutes(self):
+        self.reconnect(60)
+        self.advance(1)
+        self.progress()
+        self.state = logbook.load_state()
+        steering._last_mono = None
+        self.advance(118)
+        self.reconnect(5)
+        self.assertEqual(self.tells(), [tell("worker")])
+        self.advance(1)
+        self.reconnect(5)
+        self.assertEqual(self.tells(), [tell("worker"), tell("worker")])
+
     def test_wake_gap_and_the_reconnect_after_it_are_one_episode(self):
         self.wake()
         self.reconnect(5)
         self.assertEqual(self.tells(), [tell("worker")])
         self.assertEqual(self.episode()["reasons"], ["wake", "reconnect"])
         self.reconnect(5)  # the merge is single-use: this is a distinct reconnect
-        self.assertEqual(self.tells(), [tell("worker"), tell("worker")])
+        self.assertEqual(self.tells(), [tell("worker")])  # shared cooldown still applies
         self.assertEqual(self.episode()["reasons"], ["reconnect"])
+        self.advance(120)
+        self.progress()
+        self.reconnect(5)
+        self.assertEqual(self.tells(), [tell("worker"), tell("worker")])
 
     def test_wake_with_bb_asleep_at_the_gap_tick_still_steers_after_reconnect(self):
         bb.available.return_value = False
@@ -327,8 +385,131 @@ class ReconnectSteerTests(unittest.TestCase):
 
     def test_a_second_reconnect_steers_again(self):
         self.reconnect(60)
+        self.advance(120)
+        self.progress()
         self.reconnect(30)
         self.assertEqual(self.tells(), [tell("worker"), tell("worker")])
+
+    def test_pending_send_survives_restart_and_episode_expiration(self):
+        self.reconnect(60)
+        self.state = logbook.load_state()
+        steering._last_mono = None
+        self.advance(1000)
+        self.tick()
+        self.reconnect(5)
+        self.assertEqual(self.tells(), [tell("worker")])
+        self.assertEqual(self.episode()["sent"]["worker"]["delivery"], "pending")
+
+    def test_cooldown_skips_the_trigger_without_delaying_a_second_send(self):
+        self.reconnect(60)
+        self.advance(1)
+        self.progress()
+        self.reconnect(5)
+        self.advance(120)
+        self.tick()
+        self.assertEqual(self.tells(), [tell("worker")])
+
+    def test_thread_cooldown_does_not_block_other_threads(self):
+        self.reconnect(60)
+        self.threads.append(thread("other"))
+        self.reconnect(5)
+        self.assertEqual(self.tells(), [tell("worker"), tell("other")])
+
+    def test_old_state_keeps_its_last_send_when_a_new_episode_opens(self):
+        self.reconnect(60)
+        self.state["steer"].pop("last_sent")
+        self.advance(1)
+        self.progress()
+        self.reconnect(5)
+        self.assertEqual(self.tells(), [tell("worker")])
+        self.assertEqual(self.episode()["sent"]["worker"]["delivery"], "cooldown")
+
+    def test_queued_message_blocks_even_when_the_previous_send_was_handled(self):
+        self.reconnect(60)
+        self.advance(120)
+        self.progress()
+        self.queues["worker"] = [{"id": "queued", "content": [{"type": "text", "text": "keep going"}]}]
+        self.reconnect(5)
+        self.assertEqual(self.tells(), [tell("worker")])
+
+    def test_unrelated_queued_work_does_not_block_a_reconnect_nudge(self):
+        self.queues["worker"] = [{"id": "queued", "content": [{"type": "text", "text": "Review when done"}]}]
+        self.reconnect(60)
+        self.assertEqual(self.tells(), [tell("worker")])
+
+    def test_latest_keep_going_is_checked_even_when_an_older_one_was_handled(self):
+        self.reconnect(60)
+        self.advance(1)
+        self.progress()
+        self.advance(120)
+        self.record_send(tell("worker"))  # an independently sent nudge
+        self.reconnect(5)
+        self.assertEqual(self.tells(), [tell("worker")])
+
+    def test_unrelated_output_and_acceptance_do_not_clear_pending_send(self):
+        self.reconnect(60)
+        self.advance(120)
+        self.event("item/completed", {"item": {"type": "agentMessage", "text": "Other turn"}}, turn="other")
+        self.event("item/started", {"item": {"type": "agentMessage", "text": ""}})
+        self.event("thread/tokenUsage/updated", {"totalTokens": 10})
+        self.reconnect(5)
+        self.assertEqual(self.tells(), [tell("worker")])
+
+    def test_rejected_send_does_not_block_future_reconnects_forever(self):
+        self.reconnect(60)
+        self.advance(120)
+        self.event("client/turn/rejected", {"requestId": self.events["worker"][0]["data"]["requestId"]})
+        self.reconnect(5)
+        self.assertEqual(self.tells(), [tell("worker"), tell("worker")])
+
+    def test_lost_cli_reply_stays_pending_across_new_triggers(self):
+        self.send.side_effect = RuntimeError("lost reply")
+        self.reconnect(60)
+        self.send.side_effect = self.record_send
+        self.advance(120)
+        self.reconnect(5)
+        self.assertEqual(self.tells(), [tell("worker")])
+
+    def test_unreadable_history_defers_the_send(self):
+        def read(args):
+            if args[:2] == ["thread", "log"]:
+                raise bb.BbUnavailable("log unavailable")
+            return self.read_bb(args)
+        bb.bb_json.side_effect = read
+        self.reconnect(60)
+        self.assertEqual(self.tells(), [])
+        bb.bb_json.side_effect = self.read_bb
+        self.tick()
+        self.assertEqual(self.tells(), [tell("worker")])
+
+    def test_slow_dispatch_does_not_shorten_the_cooldown(self):
+        def slow_send(args):
+            self.record_send(args)
+            self.advance(90)
+            return self.send.return_value
+        self.send.side_effect = slow_send
+        self.reconnect(60)
+        self.send.side_effect = self.record_send
+        self.advance(1)
+        self.progress()
+        self.advance(118)
+        self.reconnect(5)
+        self.assertEqual(self.tells(), [tell("worker")])
+        self.advance(1)
+        self.reconnect(5)
+        self.assertEqual(self.tells(), [tell("worker"), tell("worker")])
+
+    def test_failed_reservation_does_not_leave_a_phantom_pending_send(self):
+        def save(state):
+            if state.get("steer", {}).get("last_sent", {}).get("worker", {}).get("delivery") == "unknown":
+                raise OSError("state write failed")
+            logbook.save_state(state)
+        with mock.patch.object(steering, "save_state", side_effect=save):
+            self.reconnect(60)
+        self.assertEqual(self.tells(), [])
+        self.state = logbook.load_state()
+        self.tick()
+        self.assertEqual(self.tells(), [tell("worker")])
 
     def test_stale_episode_expires_without_sending(self):
         self.dns.return_value = False

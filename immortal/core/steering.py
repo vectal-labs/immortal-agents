@@ -2,8 +2,8 @@
 
 An episode opens when the watcher comes back online or notices that the Mac
 slept. Its candidates are the threads active at that moment; each gets one
-"keep going" once its provider answers again. The episode is saved before any
-send, so polls and watcher restarts cannot repeat it.
+"keep going" once its provider answers again. Per-thread send history survives
+episodes and restarts; recent or still-pending nudges are skipped.
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ EPISODE_MERGE_SECS = 60
 WAKE_GAP_SECS = 5
 # Providers that never come back within this window get no stale nudge.
 EPISODE_WINDOW_SECS = 900
+STEER_COOLDOWN_SECS = 120
 _last_mono = None
 
 
@@ -107,6 +108,11 @@ def tick(state, now=None):
     steer = state.get("steer")
     if not isinstance(steer, dict):
         steer = state["steer"] = {}
+    if "last_sent" not in steer:
+        # Preserve the installed watcher's last episode when upgrading state.
+        steer["last_sent"] = {ref: dict(entry) for ref, entry in
+                              ((steer.get("episode") or {}).get("sent") or {}).items()
+                              if entry.get("delivery") in ("sent", "queued", "unknown")}
     if "seen_recovery_at" not in steer:
         steer["seen_recovery_at"] = state.get("last_recovery_at")  # first run: an old reconnect is not news
     online = state.get("online") is True
@@ -132,7 +138,7 @@ def tick(state, now=None):
         if not _snapshot(state, episode):
             return
         save_state(state)
-    _steer_candidates(state, episode, now)
+    _steer_candidates(state, episode)
 
 
 def _ready(candidate):
@@ -141,15 +147,35 @@ def _ready(candidate):
     return ready.check()  # unknown route: the legacy DNS readiness gate
 
 
-def _steer_candidates(state, episode, now):
+def _steer_candidates(state, episode):
+    last_sent = state["steer"]["last_sent"]
     for ref, candidate in episode["candidates"].items():
         if ref in episode["sent"] or not _ready(candidate):
             continue
+        now = datetime.now(timezone.utc)
+        previous = last_sent.get(ref)
+        sent_at = parse_ts(previous.get("at")) if previous else None
+        if sent_at and (now - sent_at).total_seconds() < STEER_COOLDOWN_SECS:
+            episode["sent"][ref] = {"at": now_iso(now), "delivery": "cooldown"}
+            save_state(state)
+            log("steer_skipped", ref=ref, reason="cooldown")
+            continue
         # Reserve first: a crash after bb accepts the steer must not resend.
         episode["sent"][ref] = {"at": now_iso(now), "delivery": "unknown"}
-        save_state(state)
+        last_sent[ref] = {**episode["sent"][ref], "since": now_iso(now)}
         try:
-            delivery = host_bb.steer({"ref": ref, **candidate})
+            save_state(state)
+        except Exception:
+            # The outer watcher may save again; do not persist an unsent nudge.
+            episode["sent"].pop(ref, None)
+            if previous is None:
+                last_sent.pop(ref, None)
+            else:
+                last_sent[ref] = previous
+            raise
+        try:
+            delivery = host_bb.steer({"ref": ref, **candidate,
+                                     "last_steer_at": previous.get("since", previous.get("at")) if previous else None})
         except Exception as exc:  # one thread must not stop the others
             log("steer_error", ref=ref, error=str(exc))
             delivery = "unknown"
@@ -157,6 +183,19 @@ def _steer_candidates(state, episode, now):
             episode["sent"].pop(ref, None)  # nothing reached bb; retry next tick
         else:
             episode["sent"][ref]["delivery"] = delivery
+        if delivery in ("not_sent", "superseded", "pending"):
+            if previous is None:
+                last_sent.pop(ref, None)
+            else:
+                last_sent[ref] = previous
+        else:
+            last_sent[ref]["delivery"] = delivery
+            # Preflight/dispatch can be slow. Start the cooldown after the call,
+            # but retain its reservation time for matching BB's request events.
+            last_sent[ref]["at"] = now_iso(datetime.now(timezone.utc))
         save_state(state)
-        log("steer_sent", ref=ref, harness=candidate.get("harness"), title=candidate.get("title"),
-            delivery=delivery, reasons=episode.get("reasons"))
+        if delivery == "pending":
+            log("steer_skipped", ref=ref, reason="pending")
+        else:
+            log("steer_sent", ref=ref, harness=candidate.get("harness"), title=candidate.get("title"),
+                delivery=delivery, reasons=episode.get("reasons"))

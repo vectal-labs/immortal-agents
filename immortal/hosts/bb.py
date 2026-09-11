@@ -16,8 +16,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from immortal.core.bb_runtime import DEFAULT_BB, BbRuntimeError, available as runtime_available, bb_cmd, run_bb
-from immortal.core.common import RESUME_TEXT
+from immortal.core import recovery_events
+from immortal.core.common import RESUME_TEXT, now_iso, parse_ts
 from immortal.core.logbook import log
+from immortal.core.outcomes import _has_text
 
 NAME = "bb"
 DETECTOR = "bb"
@@ -342,6 +344,29 @@ def _waiting_on_user(ref):
                for row in _rows(bb_json(["thread", "interactions", "list", ref])))
 
 
+def _steer_pending(ref, since):
+    # Queued nudges have no timeline event until BB dispatches them.
+    if any(recovery_events.input_text(row.get("content")) == RESUME_TEXT
+           for row in _rows(bb_json(["thread", "queue", "list", ref]))):
+        return True
+    events = _thread_events(ref)
+    request = next((row for row in reversed(events)
+                    if row.get("type") == "client/turn/requested"
+                    and recovery_events.input_text(_object(row.get("data")).get("input")) == RESUME_TEXT), None)
+    if request is None and not since:
+        return False
+    attempt = {"sent_at": since}
+    if request is not None:
+        at = _ms_to_dt(request.get("createdAt"))
+        if at is None:
+            raise BbUnavailable("bb returned a keep-going request without a timestamp")
+        if not since or at >= parse_ts(since):
+            attempt = {"sent_at": now_iso(at), "bb_after_seq": request["seq"] - 1}
+    output = recovery_events.bb_output(attempt, events, _has_text)
+    # Acceptance alone is not handling. Keep ambiguous sends pending too.
+    return not output and not attempt.get("finished_reason")
+
+
 def steer(target):
     """Re-read the thread, then steer RESUME_TEXT into its live turn."""
     ref = target["ref"]
@@ -349,6 +374,8 @@ def steer(target):
         current = _object(_object(bb_json(["thread", "show", ref])).get("thread"))
         if not _steerable(current) or _waiting_on_user(ref):
             return "superseded"
+        if _steer_pending(ref, target.get("last_steer_at")):
+            return "pending"
     except (BbUnavailable, BbRuntimeError, OSError, subprocess.TimeoutExpired, ValueError, TypeError, KeyError):
         return "not_sent"  # Read-only so far.
     try:
