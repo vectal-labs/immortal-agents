@@ -61,6 +61,40 @@ Both events include an attempt ID, host, harness, reason, and elapsed seconds.
 They are logged locally and sent to the diagnostics server only when telemetry
 is enabled. Telemetry excludes session paths, thread IDs, prompts, and output text.
 
+## Reconnect steering (ADR 0052)
+
+After every reconnect, and after the Mac wakes, the watcher steers one `keep going`
+into each BB thread that was still active at that moment. No error and no minimum
+outage is required; the ordinary failed-thread recovery above is unchanged and runs first.
+
+An episode opens on an offline-to-online probe or when wall time outruns
+`time.monotonic()` by more than five seconds (the Mac slept; a slow scan never
+qualifies). The reconnect that follows a wake gap joins that wake episode once.
+The candidate set is frozen at the episode start: local, in-scope providers
+(`claude-code`, `codex`, `pi`, `acp-cursor`), status `active`, not archived or
+deleted, not waiting on a question or approval, and not retried by ordinary
+recovery since that tick's probe (older unconfirmed attempts do not count). Work
+started later is not part of that reconnect. If BB cannot answer
+yet, the snapshot is retried on later ticks instead of freezing an empty set.
+
+Each candidate is sent once its provider answers: known routes use the same
+unauthenticated endpoint probe as recovery, unknown routes use the DNS readiness
+check. Cached results from before the outage are discarded when the episode opens.
+Nothing is sent while the Apple probe is offline. Right before the send the thread
+is re-read; a finished thread or a pending interaction (`bb thread interactions
+list`, since `thread show` omits `hasPendingInteraction`) cancels its nudge.
+`bb thread tell --mode auto --json` reports `sent` or `queued`.
+
+The episode, its candidates, and each reservation are saved in `state.json` before
+bb is called, so polls, crashes, and watcher restarts cannot repeat a nudge. A later
+distinct reconnect is a new episode and steers again. Episodes expire after 15 minutes.
+Logs: `steer_episode` (opened, snapshot, merged, expired) and `steer_sent`. Steers
+are not confirmed or announced on Discord.
+
+Limits: threads on other machines are never steered; unknown routes wait for both
+`api.anthropic.com` and `api.openai.com` to resolve; a wake is only seen while the
+watcher process survives it (a restart is not a wake).
+
 ## Discord success alerts
 
 Every confirmed recovery uses the same durable success

@@ -21,6 +21,7 @@ from immortal.core import outcomes
 from immortal.core import native_recovery
 from immortal.core import bb_recovery
 from immortal.core import ready
+from immortal.core import steering
 from immortal.core import telemetry
 from immortal.core.common import iso_after, now_iso, parse_ts
 from immortal.core.logbook import log, save_state
@@ -318,6 +319,11 @@ def run_provider_check(state):
         # The saved alert remains pending even if disk or worker startup fails.
         log("discord_delivery_error", reason="outbox_tick_failed")
     now = datetime.now(timezone.utc)
+    # ADR 0052: every tick, so a reconnect steer never waits for the 30s scan.
+    try:
+        steering.tick(state, now)
+    except Exception as exc:
+        log("recovery_tick_error", tick="steer", error=str(exc))
     next_at = state.get("provider_check_next_at")
     if next_at and now < parse_ts(next_at):
         return

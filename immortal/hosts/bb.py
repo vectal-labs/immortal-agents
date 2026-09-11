@@ -296,16 +296,78 @@ def read_screen(ref):
     return _ERRORS.get(ref, (None, None))[0]
 
 
+def _local_host_id():
+    try:
+        return (Path(os.environ.get("BB_DATA_DIR", Path.home() / ".bb")) / "host-id").read_text().strip()
+    except OSError:
+        return None
+
+
 def recovery_endpoint(target):
     """Resolve a route from session/config evidence, never the harness name alone."""
     from immortal.core.provider_endpoint import recovery_endpoint as resolve
-    try:
-        local_host = (Path(os.environ.get("BB_DATA_DIR", Path.home() / ".bb")) / "host-id").read_text().strip()
-    except OSError:
-        return None
+    local_host = _local_host_id()
     if not local_host or target.get("environment_host_id") != local_host:
         return None  # This Mac's connection says nothing about a remote agent.
     return resolve(target.get("harness_hint"), _thread_events(target["ref"]))
+
+
+def _steerable(thread):
+    """ADR 0052: a live turn that is not waiting on the user."""
+    return (thread.get("providerId") in PROVIDERS and thread.get("status") == "active"
+            and isinstance(thread.get("id"), str) and thread["id"]
+            and not thread.get("archivedAt") and not thread.get("deletedAt")
+            and not thread.get("hasPendingInteraction"))
+
+
+def list_active():
+    """Threads whose turn a reconnect steer may interrupt. Raises BbUnavailable, never guesses empty."""
+    local_host = _local_host_id()
+    if not local_host:
+        return []
+    try:
+        threads = _rows(bb_json(["thread", "list"]))
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise BbUnavailable(str(exc))
+    # This Mac's reconnect says nothing about an agent on another machine.
+    return [{"ref": t["id"], "id": t["id"], "title": t.get("title"), "harness_hint": t.get("providerId"),
+             "environment_host_id": local_host}
+            for t in threads if isinstance(t, dict) and _steerable(t)
+            and t.get("environmentHostId") == local_host]
+
+
+def _waiting_on_user(ref):
+    """`thread show` omits hasPendingInteraction; the interactions list is explicit."""
+    return any(row.get("status", "pending") == "pending"
+               for row in _rows(bb_json(["thread", "interactions", "list", ref])))
+
+
+def steer(target):
+    """Re-read the thread, then steer RESUME_TEXT into its live turn."""
+    ref = target["ref"]
+    try:
+        current = _object(_object(bb_json(["thread", "show", ref])).get("thread"))
+        if not _steerable(current) or _waiting_on_user(ref):
+            return "superseded"
+    except (BbUnavailable, BbRuntimeError, OSError, subprocess.TimeoutExpired, ValueError, TypeError, KeyError):
+        return "not_sent"  # Read-only so far.
+    try:
+        proc = run_bb(["thread", "tell", ref, RESUME_TEXT, "--mode", "auto", "--json"])
+    except BbRuntimeError:
+        return "not_sent"
+    except (OSError, subprocess.TimeoutExpired, UnicodeError):
+        return "unknown"
+    log("bb_result", cmd=getattr(proc, "args", None) or ["thread", "tell", ref], code=proc.returncode,
+        stdout=(proc.stdout or "")[-300:])
+    if proc.returncode:
+        return "unknown"  # A CLI error can arrive after bb accepted the input.
+    try:
+        data = json.loads(proc.stdout)
+    except (ValueError, TypeError):
+        return "unknown"
+    if isinstance(data, dict) and data.get("ok") is True and data.get("delivery") in ("sent", "queued"):
+        return data["delivery"]
+    return "unknown"
 
 
 def submission_ready(target):
