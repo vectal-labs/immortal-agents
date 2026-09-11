@@ -1,6 +1,6 @@
 # Managed Codex recovery
 
-Status: implementation candidate. No stable managed Codex package is published. `codex-release.json` deliberately reports unavailable until release validation passes. The current public watcher release remains v0.1.0.
+Status: implementation candidate. No stable managed Codex package is published. `codex-release.json` deliberately reports unavailable until release validation passes. Public watcher releases do not include a managed Codex package.
 
 ## Install and update
 

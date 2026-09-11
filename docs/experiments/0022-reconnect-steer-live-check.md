@@ -31,3 +31,30 @@ A Claude Code fixture refused a foreground `sleep` as a blocking command. Use Co
 for live turn fixtures.
 
 Both fixtures were archived afterwards.
+
+## v0.2.0 candidate verification (2026-09-11)
+
+What was checked for the release that ships this steering, with provenance:
+
+- Unit suite: `python3.14 -m unittest discover -s tests` on the candidate commit
+  ran 619 tests, OK, including the 33 reconnect and wake tests in
+  `tests/test_reconnect_steer.py`.
+- Old-updater upgrade path (`0022-upgrade-check.py`): a real clone of public
+  v0.1.0 (`6f92cdc`) was upgraded to the candidate by the v0.1.0 updater code with
+  a real Git tag fetch and fast-forward. GitHub, launchctl, and the watcher restart
+  were mocked as in `tests/test_updates.py`; no watcher ran and no host adapter was
+  touched. `state.json`, `telemetry`, `discord_webhook`, and `bb_runtime.json` were
+  byte-identical afterwards. The candidate's same-version update then ran the
+  fresh-process component migration, which reported that Codex recovery is not
+  enabled and created nothing under the fixture home. A clone at the initial
+  public commit, which predates the checker, fast-forwarded with `git pull --ff-only`.
+- Real watcher restart: `./install.sh restart` and `./install.sh status` on the
+  primary checkout of David's Mac after the candidate landed (see the release
+  report for the exact PID and commit).
+
+Not verified, and the reason: a physical sleep and wake, and a fresh install or
+upgrade on a second Mac. The only other machines enrolled in BB are two Ubuntu
+hosts, and forcing sleep on David's working Mac needs fresh authorization. The
+live steer and pending-question evidence above stands for the unchanged steering
+code; David's live watcher log held no `steer_episode` or `steer_sent` events to
+substitute for a real wake.
