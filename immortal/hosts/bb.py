@@ -159,8 +159,9 @@ def last_error(events, provider=None):
             if final and final.get("submission") and data.get("message") == "Command turn.submit failed":
                 final.update(detail=data.get("detail") or final["detail"], at=_ms_to_dt(ev.get("createdAt")))
                 final["submission"]["error_seq"] = ev.get("seq")
-            if (interrupted == (turn, ev.get("createdAt"))
-                    and data.get("message") == "Thread interrupted because the host daemon disconnected"):
+            # The structured interruption below supplies the cause; BB's
+            # display wording differs between a restart and a lost connection.
+            if interrupted == (turn, ev.get("createdAt")):
                 restart_error = ev
         elif kind == "turn/started":
             final = interrupted = restart_error = None
@@ -178,7 +179,8 @@ def last_error(events, provider=None):
                 final = None
         elif kind == "system/thread/interrupted":
             final = None
-            if (data.get("reason") == "host-daemon-restarted" and request
+            if (data.get("reason") == "host-daemon-restarted"
+                    and data.get("cause") in (None, "host-connection-lost") and request
                     and request.get("requestId") and interrupted and restart_error
                     and interrupted[1] == ev.get("createdAt") and isinstance(ev.get("seq"), int)):
                 final = {"detail": "BB daemon interruption", "at": _ms_to_dt(ev.get("createdAt")),
@@ -400,27 +402,34 @@ def steer(target):
 def submission_ready(target):
     """Re-read bb immediately before touching a failed request."""
     ref = target["ref"]
+
+    def blocked(reason):
+        log("bb_retry_blocked", ref=ref, reason=reason)
+        return False
+
     shown = _object(bb_json(["thread", "show", ref]))
     current = _object(shown.get("thread"))
     if target.get("interruption"):
         host_id = _object(shown.get("environment", {})).get("hostId")
         if not host_id or not any(machine.get("id") == host_id and machine.get("status") == "connected"
                                   for machine in _rows(bb_json(["machine", "list"]))):
-            return False
+            return blocked("owning_host_disconnected")
     if (current.get("status") != "error" or current.get("archivedAt")
             or current.get("deletedAt") or current.get("activeBackgroundAgentCount", 0)
             or current.get("hasPendingInteraction") or target.get("has_pending_interaction")):
-        return False
+        return blocked("thread_not_retryable")
     if current.get("queuedMessageCount", 0):
-        return False
+        return blocked("queued_work")
     queued = _rows(bb_json(["thread", "queue", "list", ref]))
     if queued:
-        return False
+        return blocked("queued_work")
     if _rows(bb_json(["thread", "interactions", "list", ref])):
-        return False
+        return blocked("pending_interaction")
     error = last_error(_thread_events(ref), target.get("harness_hint"))
     failure_kind = "interruption" if target.get("interruption") else "submission"
-    return bool(error and error.get(failure_kind) == target[failure_kind])
+    if not error or error.get(failure_kind) != target[failure_kind]:
+        return blocked("failure_changed_or_completed")
+    return True
 
 
 def retry_submission(target, reset=False):

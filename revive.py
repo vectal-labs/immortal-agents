@@ -149,6 +149,8 @@ def _recover_target(state, host, target, window, mode, duration):
         if mode != "provider":
             return 0
         if state.get("online") is False:
+            log("decision", host="bb", ref=ref, decision="wait", mode=mode,
+                reasons=["watcher_offline"])
             return 0
         if target.get("interruption"):
             return bb_recovery.recover_interruption(state, target, parse_ts(window[1]), announce)

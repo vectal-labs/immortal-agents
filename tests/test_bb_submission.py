@@ -21,6 +21,7 @@ ERROR_AT = datetime.fromtimestamp(EVENTS[-1]["createdAt"] / 1000, timezone.utc)
 
 RESTART_EVENTS = json.loads((Path(__file__).parent / "fixtures/bb_daemon_restart.json").read_text())
 RESTART_AT = datetime.fromtimestamp(RESTART_EVENTS[-1]["createdAt"] / 1000, timezone.utc)
+CONNECTION_EVENTS = json.loads((Path(__file__).parent / "fixtures/bb_host_connection_lost.json").read_text())
 
 
 class DaemonRestartTests(unittest.TestCase):
@@ -69,6 +70,54 @@ class DaemonRestartTests(unittest.TestCase):
                          ["thread", "retry", REF, "--turn", "request-1", "--json"])
         self.assertNotIn("unhandled_provider_error", str(self.alert.call_args_list))
 
+    def use_connection_failure(self):
+        self.events = copy.deepcopy(CONNECTION_EVENTS[:-1])
+        stamp = datetime.fromtimestamp(self.events[-1]["createdAt"] / 1000, timezone.utc)
+        self.enterContext(mock.patch(__name__ + ".RESTART_AT", stamp))
+
+    def test_real_connection_loss_retries_once_after_host_reconnects(self):
+        self.use_connection_failure()
+        self.machines[0]["status"] = "disconnected"
+        self.assertEqual(self.run_at(), 0)
+        self.command.assert_not_called()
+        self.machines[0]["status"] = "connected"
+        self.assertEqual(self.run_at(61), 1)
+        self.assertEqual(self.command.call_args.args[0],
+                         ["thread", "retry", REF, "--turn", "creq_zy4a6arh6s", "--json"])
+        self.state = logbook.load_state()
+        self.assertEqual(self.run_at(91), 0)
+        self.command.assert_called_once()
+
+    def test_connection_loss_display_wording_does_not_control_recovery(self):
+        self.use_connection_failure()
+        self.events[-2]["data"]["message"] = "Translated host interruption"
+        self.events[-2]["data"]["detail"] = "Translated retry instructions"
+        self.assertEqual(self.run_at(), 1)
+
+    def test_completed_connection_loss_turn_is_never_retried(self):
+        self.use_connection_failure()
+        self.events.append(copy.deepcopy(CONNECTION_EVENTS[-1]))
+        self.assertEqual(self.run_at(600), 0)
+        self.command.assert_not_called()
+
+    def test_late_completion_before_dispatch_cancels_connection_loss_retry(self):
+        self.use_connection_failure()
+        reads = 0
+
+        def read(args):
+            nonlocal reads
+            if args[:2] == ["thread", "show"]:
+                reads += 1
+                if reads == 2:
+                    self.events.append(copy.deepcopy(CONNECTION_EVENTS[-1]))
+            return self.read_bb(args)
+
+        with mock.patch.object(host, "bb_json", side_effect=read):
+            self.assertEqual(self.run_at(), 0)
+        self.assertEqual(reads, 2)
+        self.command.assert_not_called()
+        self.assertEqual(self.state["pending_revives"], {})
+
 
     def test_exact_event_identity_is_preserved_without_prompts(self):
         error = host.last_error(self.events, "codex")
@@ -82,7 +131,8 @@ class DaemonRestartTests(unittest.TestCase):
         variants = []
         for index, field, value in ((5, "reason", "user"), (3, "status", "completed"),
                                      (2, "clientRequestId", "other"),
-                                     (4, "message", "Another command failed")):
+                                     (4, "code", "unrelated_command_failed"),
+                                     (5, "cause", "unknown-cause")):
             events = copy.deepcopy(RESTART_EVENTS)
             events[index]["data"][field] = value
             variants.append(events)
@@ -511,6 +561,7 @@ class RecoveryPolicyTests(unittest.TestCase):
 
 class RetryCommandTests(unittest.TestCase):
     def setUp(self):
+        isolate_state(self)
         error = host.last_error(EVENTS, "codex")
         self.target = {"ref": REF, "submission": error["submission"], "harness_hint": "codex"}
 

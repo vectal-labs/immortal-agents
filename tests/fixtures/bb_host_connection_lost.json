@@ -1,0 +1,9 @@
+[
+  {"seq":2285,"createdAt":1789287950534,"type":"client/turn/requested","scope":{"kind":"thread"},"data":{"requestId":"creq_zy4a6arh6s"}},
+  {"seq":2286,"createdAt":1789287951361,"type":"turn/started","scope":{"kind":"turn","turnId":"da7e85a431-t5"},"data":{}},
+  {"seq":2287,"createdAt":1789287951361,"type":"turn/input/accepted","scope":{"kind":"turn","turnId":"da7e85a431-t5"},"data":{"clientRequestId":"creq_zy4a6arh6s"}},
+  {"seq":2300,"createdAt":1789288121980,"type":"turn/completed","scope":{"kind":"turn","turnId":"da7e85a431-t5"},"data":{"status":"interrupted"}},
+  {"seq":2301,"createdAt":1789288121980,"type":"system/error","scope":{"kind":"turn","turnId":"da7e85a431-t5"},"data":{"code":"thread_command_failed","message":"Thread interrupted because the connection to the host was lost","detail":"Please retry the thread to continue."}},
+  {"seq":2302,"createdAt":1789288121980,"type":"system/thread/interrupted","scope":{"kind":"thread"},"data":{"reason":"host-daemon-restarted","cause":"host-connection-lost"}},
+  {"seq":2346,"createdAt":1789288651044,"type":"turn/completed","scope":{"kind":"turn","turnId":"da7e85a431-t5"},"data":{"status":"completed"}}
+]
