@@ -2,6 +2,14 @@
   "schema": 1,
   "releases": [
     {
+      "version": "0.2.1",
+      "published_at": "2026-09-13",
+      "important": true,
+      "summary": "Fixes BB host-disconnection recovery and duplicate reconnect messages.",
+      "commit": "95bd2a7a77a11b469aa322221b304159c6988c66",
+      "notes_url": "https://github.com/vectal-labs/immortal-agents/releases/tag/v0.2.1"
+    },
+    {
       "version": "0.2.0",
       "published_at": "2026-09-11",
       "important": true,
