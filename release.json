@@ -2,6 +2,14 @@
   "schema": 1,
   "releases": [
     {
+      "version": "0.2.2",
+      "published_at": "2026-09-14",
+      "important": true,
+      "summary": "Skips automatic keep-going messages when you have just sent input in a BB thread.",
+      "commit": "f73bdfb393635007a1e7ba0e0c7f2b45cd3f01ab",
+      "notes_url": "https://github.com/vectal-labs/immortal-agents/releases/tag/v0.2.2"
+    },
+    {
       "version": "0.2.1",
       "published_at": "2026-09-13",
       "important": true,
