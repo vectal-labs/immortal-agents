@@ -346,12 +346,26 @@ def _waiting_on_user(ref):
                for row in _rows(bb_json(["thread", "interactions", "list", ref])))
 
 
-def _steer_pending(ref, since):
-    # Queued nudges have no timeline event until BB dispatches them.
-    if any(recovery_events.input_text(row.get("content")) == RESUME_TEXT
-           for row in _rows(bb_json(["thread", "queue", "list", ref]))):
-        return True
-    events = _thread_events(ref)
+def _user_messaged_since(events, since):
+    cutoff = parse_ts(since)
+    if cutoff is None:
+        raise BbUnavailable("missing reconnect user-input cutoff")
+    for row in reversed(events):
+        if row.get("type") != "client/turn/requested":
+            continue
+        data = _object(row.get("data"))
+        if data.get("initiator", "user") != "user" or data.get("senderThreadId"):
+            continue
+        at = _ms_to_dt(row.get("createdAt"))
+        if at is None:
+            raise BbUnavailable("bb returned a user request without a timestamp")
+        # Manual and watcher 'keep going' have the same BB author; both count.
+        if at >= cutoff:
+            return True
+    return False
+
+
+def _steer_pending(events, since):
     request = next((row for row in reversed(events)
                     if row.get("type") == "client/turn/requested"
                     and recovery_events.input_text(_object(row.get("data")).get("input")) == RESUME_TEXT), None)
@@ -376,7 +390,15 @@ def steer(target):
         current = _object(_object(bb_json(["thread", "show", ref])).get("thread"))
         if not _steerable(current) or _waiting_on_user(ref):
             return "superseded"
-        if _steer_pending(ref, target.get("last_steer_at")):
+        # Read history last and reuse it for both guards. Queued input has no
+        # timeline event until BB dispatches it.
+        queued = _rows(bb_json(["thread", "queue", "list", ref]))
+        events = _thread_events(ref)
+        if _user_messaged_since(events, target.get("user_input_since")):
+            log("steer_skipped", ref=ref, reason="recent_user_message")
+            return "superseded"
+        if (any(recovery_events.input_text(row.get("content")) == RESUME_TEXT for row in queued)
+                or _steer_pending(events, target.get("last_steer_at"))):
             return "pending"
     except (BbUnavailable, BbRuntimeError, OSError, subprocess.TimeoutExpired, ValueError, TypeError, KeyError):
         return "not_sent"  # Read-only so far.

@@ -7,7 +7,7 @@ from unittest import mock
 
 import revive
 import watcher
-from immortal.core import logbook, ready, steering
+from immortal.core import common, logbook, ready, steering
 from immortal.core.common import now_iso
 from immortal.hosts import bb
 from support import isolate_state
@@ -49,7 +49,7 @@ class ReconnectSteerTests(unittest.TestCase):
         self.events = {}
         self.queues = {}
         self.now = datetime.now(timezone.utc)
-        for module in (watcher, revive, steering):
+        for module in (watcher, revive, steering, common):
             clock = self.enterContext(mock.patch.object(module, "datetime", wraps=datetime))
             clock.now.side_effect = lambda *args: self.now
         self.send.side_effect = self.record_send
@@ -88,6 +88,14 @@ class ReconnectSteerTests(unittest.TestCase):
         self.event("turn/input/accepted", {"clientRequestId": request}, ref)
         return self.send.return_value
 
+    def user_message(self, text="I already resumed this", ref="worker", **metadata):
+        request = f"user-{len(self.events.get(ref, []))}"
+        self.event("client/turn/requested", {
+            "requestId": request, "initiator": "user", "senderThreadId": None,
+            "input": [{"type": "text", "text": text}], **metadata,
+        }, ref)
+        self.event("turn/input/accepted", {"clientRequestId": request}, ref)
+
     def advance(self, seconds):
         self.now += timedelta(seconds=seconds)
         self.clock.return_value += seconds
@@ -103,6 +111,9 @@ class ReconnectSteerTests(unittest.TestCase):
         watcher.loop()
 
     def reconnect(self, outage_secs=60):
+        # Real reconnects have distinct timestamps, even with our frozen clock.
+        if self.state.get("last_recovery_at") == now_iso(self.now):
+            self.advance(0.001)
         self.tick(online=False)
         self.state["outage_started_at"] = now_iso(self.now - timedelta(seconds=outage_secs))
         self.tick(online=True)
@@ -245,6 +256,140 @@ class ReconnectSteerTests(unittest.TestCase):
         self.dns.return_value = True
         self.tick()
         self.assertEqual(self.tells(), [tell("worker")])
+
+    def test_user_message_before_reconnect_cancels_mistimed_nudge(self):
+        # September 14: user input 16:37:44.653, reconnect 16:37:50.983,
+        # an active command, then the unwanted steer at 16:38:06.521 UTC.
+        self.enterContext(mock.patch.object(revive, "run_recheck"))
+        self.threads = [thread("worker", provider="pi")]
+        self.now = datetime(2026, 9, 14, 16, 37, 44, 653000, tzinfo=timezone.utc)
+        self.user_message()
+        self.advance(6.330343)
+        self.dns.return_value = False
+        self.reconnect(532.64)
+        self.advance(15.537657)
+        self.event("item/started", {"item": {"type": "commandExecution"}})
+        self.dns.return_value = True
+        self.tick()
+        self.assertEqual(self.tells(), [])
+        self.assertEqual(self.episode()["sent"]["worker"]["delivery"], "superseded")
+        self.assertNotIn("worker", self.state["steer"]["last_sent"])
+
+    def test_user_message_at_lookback_boundary_blocks_only_its_thread(self):
+        self.threads = [thread("worker"), thread("other")]
+        self.user_message()
+        self.advance(60)
+        self.reconnect(60)
+        self.assertEqual(self.tells(), [tell("other")])
+
+    def test_user_message_before_lookback_does_not_block(self):
+        self.user_message()
+        self.advance(61)
+        self.reconnect(60)
+        self.assertEqual(self.tells(), [tell("worker")])
+
+    def test_slow_recovery_scan_keeps_the_original_reconnect_cutoff(self):
+        self.user_message()
+        self.advance(5)
+        self.enterContext(mock.patch.object(revive, "run_recheck", side_effect=lambda state: self.advance(120)))
+        self.reconnect(60)
+        self.assertEqual(self.tells(), [])
+        self.assertEqual(self.episode()["sent"]["worker"]["delivery"], "superseded")
+
+    def test_recent_input_does_not_age_out_while_readiness_is_delayed(self):
+        self.user_message()
+        self.advance(5)
+        self.dns.return_value = False
+        self.reconnect(60)
+        self.advance(180)
+        self.state = logbook.load_state()
+        steering._last_mono = None
+        self.dns.return_value = True
+        self.tick()
+        self.assertEqual(self.tells(), [])
+        self.assertEqual(self.episode()["sent"]["worker"]["delivery"], "superseded")
+
+    def test_user_input_during_readiness_wait_cancels_without_delayed_send(self):
+        self.dns.return_value = False
+        self.reconnect(60)
+        self.advance(120)
+        self.user_message()
+        self.advance(120)
+        self.dns.return_value = True
+        self.tick()
+        self.state = logbook.load_state()
+        steering._last_mono = None
+        self.advance(120)
+        self.tick()
+        self.assertEqual(self.tells(), [])
+        self.assertEqual(self.episode()["sent"]["worker"]["delivery"], "superseded")
+        self.reconnect(5)  # A later reconnect is independent, not a deferred nudge.
+        self.assertEqual(self.tells(), [tell("worker")])
+
+    def test_user_message_during_send_preflight_cancels_nudge(self):
+        def read(args):
+            if args == ["thread", "queue", "list", "worker"]:
+                self.user_message()
+            return self.read_bb(args)
+        bb.bb_json.side_effect = read
+        self.reconnect(60)
+        self.assertEqual(self.tells(), [])
+        self.assertEqual(self.episode()["sent"]["worker"]["delivery"], "superseded")
+
+    def test_user_input_before_wake_cancels_nudge(self):
+        self.user_message()
+        self.advance(5)
+        self.wake(seconds=12)
+        self.assertEqual(self.tells(), [])
+        self.assertEqual(self.episode()["sent"]["worker"]["delivery"], "superseded")
+
+    def test_wake_reconnect_merge_preserves_user_input_cutoff(self):
+        self.user_message()
+        self.advance(59)
+        self.dns.return_value = False
+        self.wake(seconds=12)
+        self.advance(50)
+        self.reconnect(5)
+        self.dns.return_value = True
+        self.tick()
+        self.assertEqual(self.episode()["reasons"], ["wake", "reconnect"])
+        self.assertEqual(self.tells(), [])
+
+    def test_system_and_other_agent_messages_do_not_block(self):
+        self.user_message(initiator="system")
+        self.user_message(initiator="agent", senderThreadId="other-thread")
+        self.user_message(senderThreadId="other-thread")
+        self.reconnect(60)
+        self.assertEqual(self.tells(), [tell("worker")])
+
+    def test_system_message_does_not_hide_recent_user_input(self):
+        self.user_message()
+        self.user_message(initiator="system")
+        self.reconnect(60)
+        self.assertEqual(self.tells(), [])
+
+    def test_handled_manual_keep_going_still_cancels_reconnect_nudge(self):
+        self.user_message(text="keep going")
+        self.progress()
+        self.reconnect(60)
+        self.assertEqual(self.tells(), [])
+        self.assertEqual(self.episode()["sent"]["worker"]["delivery"], "superseded")
+
+    def test_image_only_user_input_cancels_nudge(self):
+        self.user_message(input=[{"type": "localImage", "path": "example.png"}])
+        self.reconnect(60)
+        self.assertEqual(self.tells(), [])
+
+    def test_user_input_with_bad_timestamp_defers_without_sending(self):
+        self.user_message()
+        stamp = self.events["worker"][0].pop("createdAt")
+        self.reconnect(60)
+        self.assertEqual(self.tells(), [])
+        self.assertNotIn("worker", self.episode()["sent"])
+        self.events["worker"][0]["createdAt"] = stamp
+        self.tick()
+        self.assertEqual(self.tells(), [])
+        self.assertEqual(self.episode()["sent"]["worker"]["delivery"], "superseded")
 
     def test_thread_that_finished_before_the_send_is_skipped(self):
         def read(args):

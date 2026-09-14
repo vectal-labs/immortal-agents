@@ -26,6 +26,7 @@ WAKE_GAP_SECS = 5
 # Providers that never come back within this window get no stale nudge.
 EPISODE_WINDOW_SECS = 900
 STEER_COOLDOWN_SECS = 120
+USER_MESSAGE_LOOKBACK_SECS = 60
 _last_mono = None
 
 
@@ -149,6 +150,8 @@ def _ready(candidate):
 
 def _steer_candidates(state, episode):
     last_sent = state["steer"]["last_sent"]
+    # Anchor to the reconnect tick, not delayed scans, readiness, or dispatch.
+    user_input_since = iso_after(parse_ts(episode.get("since") or episode["at"]), -USER_MESSAGE_LOOKBACK_SECS)
     for ref, candidate in episode["candidates"].items():
         if ref in episode["sent"] or not _ready(candidate):
             continue
@@ -175,6 +178,7 @@ def _steer_candidates(state, episode):
             raise
         try:
             delivery = host_bb.steer({"ref": ref, **candidate,
+                                     "user_input_since": user_input_since,
                                      "last_steer_at": previous.get("since", previous.get("at")) if previous else None})
         except Exception as exc:  # one thread must not stop the others
             log("steer_error", ref=ref, error=str(exc))
