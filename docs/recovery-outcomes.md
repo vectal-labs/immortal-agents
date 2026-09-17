@@ -100,6 +100,15 @@ Limits: threads on other machines are never steered; unknown routes wait for bot
 `api.anthropic.com` and `api.openai.com` to resolve; a wake is only seen while the
 watcher process survives it (a restart is not a wake).
 
+## Unhandled provider error alerts
+
+Discord reports each distinct error once per host and harness, across threads,
+retry timestamps, and watcher restarts. Matching ignores whitespace, case,
+request IDs, and retry countdowns; both Codex/ChatGPT usage-limit messages count
+as one issue. The last 256 error fingerprints are remembered without a timed
+reset. New error types still notify; all observations remain in local logs.
+This filter does not affect revive attempts or confirmed-success alerts.
+
 ## Discord success alerts
 
 Every confirmed recovery uses the same durable success

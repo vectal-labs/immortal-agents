@@ -99,6 +99,98 @@ class DiscordDeliveryTests(unittest.TestCase):
                               cwd=Path(__file__).resolve().parents[1],
                               capture_output=True, text=True, timeout=10)
 
+    def provider_errors(self, details, minutes=0, harness='pi'):
+        result = self.child(f'''
+from datetime import datetime, timedelta, timezone
+from unittest import mock
+import revive
+from immortal.core import logbook, notify
+now = datetime(2026, 9, 17, 11, 38, tzinfo=timezone.utc) + timedelta(minutes={minutes})
+threads = [{{'id': f'thr_{{i}}', 'providerId': {harness!r}, 'status': 'error',
+            'title': f'Task {{i}}'}} for i in range({len(details)})]
+events = {{f'thr_{{i}}': [{{'seq': 1, 'type': 'provider/error',
+    'createdAt': now.timestamp() * 1000, 'data': {{'detail': detail, 'willRetry': False}}}}]
+    for i, detail in enumerate({details!r})}}
+state = logbook.load_state()
+with mock.patch.object(revive.host_bb, 'available', return_value=True), \\
+     mock.patch.object(revive.host_bb, '_list_error_threads', return_value=threads), \\
+     mock.patch.object(revive.host_bb, '_thread_events', side_effect=events.__getitem__), \\
+     mock.patch.object(revive.host_bb, 'recovery_endpoint', return_value=None), \\
+     mock.patch.object(revive.host_bb, 'resume') as resume:
+    revive.revive_pass(state, (now.isoformat(), now.isoformat()), 'provider')
+    resume.assert_not_called()
+notify._notifications.join()
+logbook.save_state(state)
+''')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        messages = []
+        while not self.received.empty():
+            messages.append(self.received.get_nowait()[1]['content'])
+        return messages
+
+    def test_quota_alerts_are_deduplicated_across_threads_and_restarts(self):
+        quota = 'Codex error: The usage limit has been reached'
+        messages = self.provider_errors([quota,
+            'You have hit your ChatGPT usage limit (pro plan). Try again in ~7386 min.',
+            quota, quota])
+        messages += self.provider_errors([quota,
+            'You have hit your ChatGPT usage limit (pro plan). Try again in ~7351 min.',
+            quota], minutes=35)
+        self.assertEqual(len(messages), 1)
+        self.assertIn(quota, messages[0])
+
+    def test_new_error_still_alerts_even_with_the_same_timestamp(self):
+        first = self.provider_errors(['Codex error: The usage limit has been reached'])
+        changed = self.provider_errors(['Authentication failed: please sign in again'])
+        self.assertEqual(len(first), 1)
+        self.assertEqual(len(changed), 1)
+        self.assertIn('Authentication failed', changed[0])
+        self.assertEqual(self.provider_errors([
+            'Codex error: The usage limit has been reached'], minutes=35), [])
+
+    def test_request_ids_do_not_make_repeated_errors_new(self):
+        first = self.provider_errors(['Invalid API key (request_id=req_abc123)'])
+        repeated = self.provider_errors(['Invalid API key (request_id=req_def456)'], minutes=35)
+        self.assertEqual(len(first), 1)
+        self.assertEqual(repeated, [])
+
+    def test_cosmetic_changes_and_elapsed_time_do_not_repeat_an_error(self):
+        messages = self.provider_errors([
+            'HTTP 400: bad request 01a0ac7a-1d14-7092-9e04-12ab99d4b52f. Retry in 60 seconds.'])
+        repeated = self.provider_errors([
+            '  http 400: BAD REQUEST 01a0ac7a-1d14-7092-9e04-12ab99d4b530.  Retry in 30 seconds.'],
+            minutes=2 * 24 * 60)
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(repeated, [])
+
+    def test_http_codes_and_different_harnesses_remain_distinct(self):
+        messages = self.provider_errors(['HTTP 401: provider rejected request'])
+        messages += self.provider_errors(['HTTP 403: provider rejected request'], minutes=35)
+        messages += self.provider_errors(['HTTP 401: provider rejected request'], harness='codex')
+        self.assertEqual(len(messages), 3)
+
+    def test_provider_alert_dedup_does_not_suppress_recovery_confirmations(self):
+        self.assertEqual(len(self.provider_errors(['Invalid API key'])), 1)
+        result = self.child('''
+import time
+from immortal.core import discord_outbox, logbook
+state = logbook.load_state()
+for attempt in ('first-recovery', 'second-recovery'):
+    discord_outbox.stage(state, attempt, 'bb', 'pi', 'Same task')
+logbook.save_state(state)
+for _ in range(300):
+    discord_outbox.tick(state)
+    if not state['discord_outbox']:
+        break
+    time.sleep(.01)
+assert not state['discord_outbox']
+''')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for _ in range(2):
+            message = self.received.get(timeout=1)[1]['content']
+            self.assertEqual(message, 'Recovery confirmed: Pi in bb · "Same task"')
+        self.assertTrue(self.received.empty())
+
     def drain(self):
         result = self.child('''
 import time

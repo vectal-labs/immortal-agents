@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import re
 from datetime import datetime, timezone
 
 from immortal.core.common import parse_ts, iso_after
@@ -9,6 +11,7 @@ from immortal.core.logbook import save_state
 
 MAX_REVIVES = 3
 PROVIDER_EPISODE_SECS = 3600
+MAX_PROVIDER_ERROR_ALERTS = 256
 
 
 def _effective_tries(entry, reset_after):
@@ -34,9 +37,27 @@ def may_revive(state, key, mode):
     raise ValueError(f"unknown revive mode: {mode}")
 
 
-def mark_seen(state, key, error_at):
-    entry = state.setdefault("revived", {}).setdefault(key, {"tries": 0})
-    entry["seen_error"] = error_at
+def mark_provider_error_seen(state, host, harness, detail):
+    """Reserve one alert per distinct error, not per thread or retry timestamp."""
+    message = " ".join(detail.casefold().split())
+    # Codex reports the same account quota through two different messages.
+    if (message.startswith("you have hit your chatgpt usage limit")
+            or re.fullmatch(r"(?:codex error: )?the usage limit has been reached[.!]?", message)):
+        message = "codex_usage_limit"
+    message = re.sub(r"\b[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\b", "<id>", message)
+    message = re.sub(r"\brequest[_ -]?id\s*[:=]\s*[a-z0-9_-]+\b", "request_id=<id>", message)
+    message = re.sub(r"\b(try again|retry) in ~?\d+(?:\.\d+)?\s*"
+                     r"(?:milliseconds?|ms|seconds?|secs?|minutes?|mins?|hours?|hrs?|days?)\b",
+                     r"\1 in <delay>", message)
+    fingerprint = hashlib.sha256(f"{host}\0{harness}\0{message}".encode()).hexdigest()
+    previous = state.get("provider_error_alerts", [])
+    if fingerprint in previous:
+        return False
+    alerts = [*previous[-(MAX_PROVIDER_ERROR_ALERTS - 1):], fingerprint]
+    # Do not consume a new alert in memory if persistence fails.
+    save_state({**state, "provider_error_alerts": alerts})
+    state["provider_error_alerts"] = alerts
+    return True
 
 
 def target_key(host, target, info, window, mode):

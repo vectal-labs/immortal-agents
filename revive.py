@@ -26,7 +26,7 @@ from immortal.core import telemetry
 from immortal.core.common import iso_after, now_iso, parse_ts
 from immortal.core.logbook import log, save_state
 from immortal.core.revive_state import (
-    MAX_REVIVES, error_at, mark_seen, target_key,
+    MAX_REVIVES, error_at, mark_provider_error_seen, target_key,
     attempt_allowed, reserve, delivered,
 )
 
@@ -178,14 +178,10 @@ def _recover_target(state, host, target, window, mode, duration):
     if "silent_hang_observed" in reasons:
         log("silent_hang_observed", host=host.NAME, ref=ref, acted=False, reasons=reasons)
     if decision == "unknown":
-        identity = _signature(info, target)
-        if entry.get("seen_error") != identity:
-            mark_seen(state, key, info.get("error_at"))
-            state["revived"][key]["seen_error"] = identity
-            save_state(state)
+        detail = info.get("error_detail") or "bb reported an error without provider details"
+        if mark_provider_error_seen(state, host.NAME, harness, detail):
             announce(host.NAME, harness, duration, target.get("title") or ref, None,
-                     detail=info.get("error_detail") or "bb reported an error without provider details",
-                     trigger="unhandled_provider_error")
+                     detail=detail, trigger="unhandled_provider_error")
         return 0
     if decision != "resume" or not attempt_allowed(
         state, key, mode, _signature(info, target), datetime.now(timezone.utc),
