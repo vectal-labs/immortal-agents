@@ -212,18 +212,6 @@ class ReconnectSteerTests(ReconnectSteerCase):
         self.reconnect(60)
         self.assertEqual(sorted(t[2] for t in self.tells()), sorted(bb.PROVIDERS))
 
-    def test_waits_for_dns_readiness_then_sends_once(self):
-        self.dns.return_value = False
-        self.reconnect(60)
-        self.tick()
-        self.assertEqual(self.tells(), [])
-        self.dns.return_value = True
-        self.tick()
-        self.assertEqual(self.tells(), [])
-        self.settle()
-        self.tick()
-        self.assertEqual(self.tells(), [tell("worker")])
-
     def test_known_endpoint_is_gated_by_its_own_probe_not_by_dns(self):
         self.threads = [thread("codex", provider="codex"), thread("worker")]
         self.endpoint.side_effect = lambda target: (
@@ -296,18 +284,14 @@ class ReconnectSteerTests(ReconnectSteerCase):
         self.assertEqual(self.episode()["sent"]["worker"]["delivery"], "superseded")
         self.assertNotIn("worker", self.state["steer"]["last_sent"])
 
-    def test_user_message_at_lookback_boundary_blocks_only_its_thread(self):
-        self.threads = [thread("worker"), thread("other")]
-        self.user_message()
+    def test_user_input_cutoff_blocks_only_recent_messages(self):
+        self.threads = [thread("old"), thread("boundary"), thread("worker")]
+        self.user_message(ref="old")
+        self.advance(1)
+        self.user_message(ref="boundary")
         self.advance(60)
         self.reconnect(60)
-        self.assertEqual(self.tells(), [tell("other")])
-
-    def test_user_message_before_lookback_does_not_block(self):
-        self.user_message()
-        self.advance(61)
-        self.reconnect(60)
-        self.assertEqual(self.tells(), [tell("worker")])
+        self.assertEqual(self.tells(), [tell("old"), tell("worker")])
 
     def test_slow_recovery_scan_keeps_the_original_reconnect_cutoff(self):
         self.user_message()
@@ -379,30 +363,25 @@ class ReconnectSteerTests(ReconnectSteerCase):
         self.assertEqual(self.tells(), [])
         self.assertEqual(self.episode()["sent"]["worker"]["delivery"], "superseded")
 
-    def test_system_and_other_agent_messages_do_not_block(self):
-        self.user_message(initiator="system")
-        self.user_message(initiator="agent", senderThreadId="other-thread")
-        self.user_message(senderThreadId="other-thread")
+    def test_user_input_guard_distinguishes_authors_and_content(self):
+        messages = {
+            "system": {"initiator": "system"},
+            "agent": {"initiator": "agent", "senderThreadId": "other-thread"},
+            "sender": {"senderThreadId": "other-thread"},
+            "human": {},
+            "manual": {"text": "keep going"},
+            "image": {"input": [{"type": "localImage", "path": "example.png"}]},
+        }
+        self.threads = [thread(ref) for ref in messages]
+        for ref, metadata in messages.items():
+            self.user_message(ref=ref, **metadata)
+        self.user_message(ref="human", initiator="system")  # Must not hide the user's input.
+        self.progress(ref="manual")
         self.reconnect(60)
-        self.assertEqual(self.tells(), [tell("worker")])
-
-    def test_system_message_does_not_hide_recent_user_input(self):
-        self.user_message()
-        self.user_message(initiator="system")
-        self.reconnect(60)
-        self.assertEqual(self.tells(), [])
-
-    def test_handled_manual_keep_going_still_cancels_reconnect_nudge(self):
-        self.user_message(text="keep going")
-        self.progress()
-        self.reconnect(60)
-        self.assertEqual(self.tells(), [])
-        self.assertEqual(self.episode()["sent"]["worker"]["delivery"], "superseded")
-
-    def test_image_only_user_input_cancels_nudge(self):
-        self.user_message(input=[{"type": "localImage", "path": "example.png"}])
-        self.reconnect(60)
-        self.assertEqual(self.tells(), [])
+        self.assertEqual([args[2] for args in self.tells()], ["system", "agent", "sender"])
+        for ref in ("human", "manual", "image"):
+            with self.subTest(ref=ref):
+                self.assertEqual(self.episode()["sent"][ref]["delivery"], "superseded")
 
     def test_user_input_with_bad_timestamp_defers_without_sending(self):
         self.user_message()
@@ -736,6 +715,8 @@ class ReconnectProgressTests(ReconnectSteerCase):
     def test_grace_starts_when_provider_is_ready_and_survives_restart(self):
         self.dns.return_value = False
         self.reconnect(5)
+        self.tick()
+        self.assertEqual(self.tells(), [])
         self.advance(120)
         self.dns.return_value = True
         self.tick()
@@ -746,6 +727,8 @@ class ReconnectProgressTests(ReconnectSteerCase):
         self.tick()
         self.assertEqual(self.tells(), [])
         self.advance(1)
+        self.tick()
+        self.assertEqual(self.tells(), [tell("worker")])
         self.tick()
         self.assertEqual(self.tells(), [tell("worker")])
 

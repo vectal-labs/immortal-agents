@@ -182,15 +182,20 @@ class OutageStartTests(unittest.TestCase):
     LAST_GOOD = "2026-09-03T19:14:58.401757Z"
     DETECTED = "2026-09-03T19:19:04.904731Z"
 
+    def setUp(self):
+        self.root = isolate_state(self)
+        self.enterContext(mock.patch.object(revive, "run_provider_check"))
+
     def tick_offline(self, state):
         with mock.patch.object(watcher, "probe", return_value=False), mock.patch.object(
             watcher, "log"
-        ) as log, mock.patch.object(watcher, "save_state"), mock.patch.object(
+        ) as log, mock.patch.object(
             watcher, "load_state", return_value=state
         ), mock.patch.object(watcher, "now_iso", return_value=self.DETECTED), mock.patch.dict(
             watcher.os.environ, {"WATCHER_ONCE": "1"}
         ):
             watcher.loop()
+        self.assertEqual(json.loads((self.root / "state.json").read_text()), state)
         return [c for c in log.call_args_list if c.args[0] == "state_change"][0].kwargs
 
     def test_window_opens_at_the_last_good_probe(self):

@@ -4,8 +4,6 @@
 from __future__ import annotations
 
 import json
-import os
-import stat
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -15,10 +13,8 @@ from unittest import mock
 from immortal.detect import bb as detect_bb
 from immortal.detect import bb_provider as detect_bb_provider
 from immortal.hosts import bb as host_bb
-from immortal.core import bb_runtime
 import revive
 from immortal.core import logbook, revive_state
-import watcher
 from immortal.core.common import now_iso, parse_ts
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
@@ -164,73 +160,6 @@ class ListFilterTests(unittest.TestCase):
             self.assertIn("ENOTFOUND", host_bb.read_screen("a"))
         events.assert_called_once_with("a")
         self.assertEqual(target["error_at"], DEATH_AT.isoformat())
-
-
-class ResumeTests(unittest.TestCase):
-    def setUp(self):
-        # Isolate HOME/state and give resume a real Node+bb pair to validate.
-        # Unisolated get_runtime() wrote ~/.immortal-agents/bb_runtime.json.
-        self._env = os.environ.copy()
-        self.tmp = tempfile.TemporaryDirectory()
-        root = Path(self.tmp.name)
-        state = root / "state"
-        state.mkdir()
-        node = root / "node"
-        bb = root / "bb"
-        node.write_text(
-            "#!/bin/sh\n"
-            'if [ "$1" = "-p" ] && [ "$2" = "process.execPath" ]; then echo "$0"; exit 0; fi\n'
-            'script="$1"; shift; exec /bin/bash "$script" "$@"\n'
-        )
-        bb.write_text("#!/usr/bin/env node\necho '[]'\nexit 0\n")
-        node.chmod(node.stat().st_mode | stat.S_IEXEC)
-        bb.chmod(bb.stat().st_mode | stat.S_IEXEC)
-        os.environ["WATCHER_STATE_DIR"] = str(state)
-        os.environ["HOME"] = str(root / "home")
-        (root / "home").mkdir()
-        os.environ["IMMORTAL_NODE"] = str(node)
-        os.environ["IMMORTAL_NODE_HINTS"] = ""
-        os.environ["BB_BIN"] = str(bb)
-        os.environ.pop("BB_CLI", None)
-        os.environ.pop("IMMORTAL_PLIST", None)
-
-    def tearDown(self):
-        for key in list(os.environ):
-            if key not in self._env:
-                os.environ.pop(key, None)
-        os.environ.update(self._env)
-        self.tmp.cleanup()
-
-    def test_logs_stdout_tail(self):
-        # Validate before patching: host_bb.subprocess is the stdlib module, so
-        # the mock replaces every subprocess.run, including Node discovery.
-        runtime = bb_runtime.get_runtime()
-        self.assertTrue(os.path.isfile(runtime["node"]))
-        self.assertTrue(os.path.isfile(runtime["bb"]))
-        value = thread("thr_x")
-        with mock.patch.object(host_bb, "_list_error_threads", return_value=[value]), mock.patch.object(
-            host_bb, "_thread_events", return_value=DEAD_EVENTS
-        ):
-            target = host_bb.list_targets()[0]
-        proc = mock.Mock(returncode=0, stdout='{"ok":true,"delivery":"sent"}', stderr="")
-
-        def run(runtime, args, **kwargs):
-            proc.args = bb_runtime.command_for(runtime, args)
-            return proc
-
-        def read(args):
-            if args[1] == "show":
-                return {"thread": value}
-            if args[1] == "log":
-                return DEAD_EVENTS
-            return []
-        with mock.patch.object(bb_runtime, "run_command", side_effect=run), mock.patch.object(
-            host_bb, "log"
-        ) as log, mock.patch.object(host_bb, "bb_json", side_effect=read):
-            self.assertEqual(host_bb.resume(target), "sent")
-        self.assertEqual(log.call_args.args[0], "bb_result")
-        self.assertEqual(log.call_args.kwargs["stdout"], proc.stdout)
-        self.assertEqual(log.call_args.kwargs["cmd"][:2], [runtime["node"], runtime["bb"]])
 
 
 # Pi on Grok 4.6 via OpenRouter, 2026-09-03. Three real failures in one day:
@@ -494,7 +423,7 @@ class WatcherIntegrationTests(unittest.TestCase):
         self.enterContext(mock.patch.object(logbook, "STATE_PATH", self.tmp / "state.json"))
         self.enterContext(mock.patch.object(logbook, "LOG_PATH", self.tmp / "watcher.log"))
         # A revive posts to Discord; tests must never hit the real webhook.
-        self.enterContext(mock.patch.object(revive.notify, "notify_revive", return_value=False))
+        self.notice = self.enterContext(mock.patch.object(revive.notify, "notify_revive", return_value=False))
 
     def test_recovery_resumes_dead_bb_thread_once(self):
         loss = iso(DEATH_AT - timedelta(minutes=5))
@@ -517,6 +446,7 @@ class WatcherIntegrationTests(unittest.TestCase):
             revive.revive_pass(state, (loss, recovery), "first")
         resume.assert_called_once_with(detector_input(thread("thr_jg3yv6kthc"), DEAD_EVENTS)[0])
         self.assertIn(f"bb:thr_jg3yv6kthc:{loss}", state["revived"])
+        self.notice.assert_called_once_with("bb", "claude-code", 600, "t", True, None, None)
 
     def test_bb_unavailable_is_logged_not_fatal(self):
         state = {"revived": {}}

@@ -195,6 +195,19 @@ class ReleaseContractTests(unittest.TestCase):
 
 
 class LaunchAgentTests(unittest.TestCase):
+    def test_stale_pid_log_cannot_confirm_a_restart(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory)
+            log = state / "watcher.log"
+            log.write_text(json.dumps({"event": "start", "pid": 123, "ts": "2026-09-05T10:00:00Z"}) + "\n")
+            since = int(updates.time.time())
+            self.assertFalse(updater.started(state, 123, since))
+            from datetime import datetime, timezone
+            log.write_text(json.dumps({"event": "start", "pid": 123,
+                                      "ts": datetime.fromtimestamp(since, timezone.utc).isoformat()}) + "\n")
+            self.assertTrue(updater.started(state, 123, since))
+            self.assertFalse(updater.started(state, 456, since))
+
     def test_job_runs_hourly_without_keepalive_or_recovery_changes(self):
         config = updates.job_config(Path("/tmp/repo with spaces"), Path("/tmp/state"), sys.executable)
         self.assertTrue(config["RunAtLoad"])
@@ -541,17 +554,6 @@ class UpdateCommandTests(unittest.TestCase):
             self.apply()
         self.assertEqual(self.git("rev-parse", "HEAD"), self.before)
         self.restart.assert_not_called()
-
-    def test_stale_pid_log_cannot_confirm_a_restart(self):
-        log = self.state / "watcher.log"
-        log.write_text(json.dumps({"event": "start", "pid": 123, "ts": "2026-09-05T10:00:00Z"}) + "\n")
-        since = int(updates.time.time())
-        self.assertFalse(updater.started(self.state, 123, since))
-        from datetime import datetime, timezone
-        log.write_text(json.dumps({"event": "start", "pid": 123,
-                                  "ts": datetime.fromtimestamp(since, timezone.utc).isoformat()}) + "\n")
-        self.assertTrue(updater.started(self.state, 123, since))
-        self.assertFalse(updater.started(self.state, 456, since))
 
     def test_commit_mismatch_never_changes_checkout(self):
         self.release()

@@ -9,13 +9,7 @@ import threading
 import unittest
 from unittest import mock
 
-from immortal.detect import bb as detect_bb
-from immortal.hosts import bb as host_bb
 from immortal.core import notify
-import revive
-from immortal.core import revive_state
-import watcher
-from support import isolate_state
 
 
 class MessageTests(unittest.TestCase):
@@ -234,34 +228,6 @@ class NotificationQueueTests(unittest.TestCase):
         self.assertEqual(post.call_count, 2)
         sleep.assert_called_once_with(notify.RETRY_DELAYS[0])
         self.assertNotIn(thread.ident, sleep_threads)
-
-
-class WatcherWiringTests(unittest.TestCase):
-    def setUp(self):
-        isolate_state(self)
-
-    def test_bb_revive_triggers_notification(self):
-        target = {
-            "ref": "thr_x", "id": "thr_x", "cwd": None, "title": "Essay",
-            "harness_hint": "claude-code", "status": "error", "error_at": None,
-        }
-        with mock.patch.object(watcher, "log"), mock.patch.object(revive, "log"), mock.patch.object(watcher, "save_state"), mock.patch.object(revive_state, "save_state"), mock.patch.object(
-            host_bb, "list_targets", return_value=[target]
-        ), mock.patch.object(host_bb, "read_screen", return_value=None), mock.patch.object(
-            detect_bb, "evaluate", return_value=("resume", [], {})
-        ), mock.patch.object(host_bb, "resume", return_value="sent"), mock.patch.object(
-            notify, "notify_revive", return_value=True
-        ) as ping, mock.patch.object(
-            host_bb, "available", return_value=True
-        ), mock.patch.object(
-            revive, "HOSTS", (host_bb,)
-        ):
-            revive.revive_pass(
-                {"revived": {}},
-                ("2026-01-01T00:00:00Z", "2026-01-01T00:10:00Z"),
-                "first",
-            )
-        ping.assert_called_once_with("bb", "claude-code", 600, "Essay", True, None, None)
 
 
 if __name__ == "__main__":

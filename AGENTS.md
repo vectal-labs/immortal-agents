@@ -15,6 +15,8 @@
 - public `origin` has separate, clean history; never merge/push old private-history branches into it. Transfer reviewed changes as patches. `backup/private-main-20260905` preserves the old local history and must not be pushed.
 - never create new ADRs without David's explicit approval
 - if the next action is obvious & safe, just do it
+- DO NOT ADD NEW TESTS, unless absolutely necessary.
+- Extend existing behavior tests instead of adding duplicate cases or mock-heavy tests of implementation details.
 - verify yourself, never ask: `python3 -m unittest discover -s tests`
 - live watcher: `./install.sh status`, `./install.sh logs`, `./install.sh check`
 

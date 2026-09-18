@@ -1,44 +1,19 @@
 """Run the installer in a staged checkout with all host effects mocked."""
 
-import os
 from pathlib import Path
-import subprocess
 import tempfile
 import unittest
 
+from support import run_installer
 
-INSTALLER = Path(__file__).resolve().parent.parent / "install.sh"
 MOCKS = r'''
-STATE_DIR="$INSTALL_TEST_DIR/state"
-PLIST="$INSTALL_TEST_DIR/LaunchAgents/watcher.plist"
-REPO_DIR="$INSTALL_TEST_DIR"
-uname() { echo Darwin; }
 python3() { :; }
 mkdir() { command mkdir -p "$STATE_DIR" "$(dirname "$PLIST")"; }
-bootout_watcher() { :; }
-launchctl() {
-  case "$1" in
-    bootstrap) return 0 ;;
-    print) [ "$INSTALL_TEST_STATUS" = 0 ] || return 1; printf '\tpid = 123\n' ;;
-    *) return 1 ;;
-  esac
-}
-sleep() { :; }
 if [ "$VERB" != status ]; then
   do_status() { return "$INSTALL_TEST_STATUS"; }
 fi
-setup_cmux() { :; }
 setup_bb() { :; }
-setup_updates() { return "$INSTALL_TEST_UPDATE_STATUS"; }
-run_updates() { :; }
-runtime_status() { echo "runtime-pid:$1"; return "$INSTALL_TEST_RUNTIME_STATUS"; }
-run_codex_recovery() {
-  echo "codex-component:$1"
-  if [ "$1" = install ]; then return "$INSTALL_TEST_CODEX_STATUS"; fi
-  return 0
-}
 probe_bb() { return 0; }
-launch_hosts() { :; }
 do_check() { return 0; }
 # Only interactive cases fake the terminal check; read still consumes real stdin.
 if [ "$INSTALL_TEST_TERMINAL" = 1 ]; then
@@ -54,25 +29,14 @@ class InstallTests(unittest.TestCase):
     def run_install(self, *, saved=None, args=(), status=0, answer="", terminal=False, update_status=0, codex_status=0, runtime_status=0):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / "watcher.py").touch()
-            state = root / "state"
-            state.mkdir()
-            (state / "watcher.log").write_text('{"event": "probe", "online": true}\n')
+            flag = root / "state/telemetry"
             if saved is not None:
-                (state / "telemetry").write_text(saved + "\n")
-            # Keep argument parsing and the complete install flow, overriding
-            # paths and host operations immediately before command dispatch.
-            source, dispatch = INSTALLER.read_text().rsplit('\ncase "$VERB" in\n', 1)
-            script = root / "install.sh"
-            script.write_text(source + MOCKS + '\ncase "$VERB" in\n' + dispatch)
-            env = dict(os.environ, INSTALL_TEST_DIR=tmp, INSTALL_TEST_STATUS=str(status),
-                       INSTALL_TEST_TERMINAL=str(int(terminal)), INSTALL_TEST_UPDATE_STATUS=str(update_status),
-                       INSTALL_TEST_CODEX_STATUS=str(codex_status), INSTALL_TEST_RUNTIME_STATUS=str(runtime_status))
-            command = ["/bin/bash", str(script), *args]
-            options = dict(env=env, capture_output=True, text=True, timeout=5,
-                           start_new_session=True)
-            result = subprocess.run(command, input=answer, **options)
-            flag = state / "telemetry"
+                flag.parent.mkdir()
+                flag.write_text(saved + "\n")
+            result = run_installer(root, *args, mocks=MOCKS, answer=answer, env={
+                "INSTALL_TEST_STATUS": str(status), "INSTALL_TEST_TERMINAL": str(int(terminal)),
+                "INSTALL_TEST_UPDATE_STATUS": str(update_status), "INSTALL_TEST_CODEX_STATUS": str(codex_status),
+                "INSTALL_TEST_RUNTIME_STATUS": str(runtime_status)})
             return result, flag.read_text().strip() if flag.exists() else None
 
     def test_codex_requires_explicit_opt_in(self):

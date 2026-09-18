@@ -16,12 +16,12 @@ from unittest import mock
 
 from immortal.core import bb_node, bb_runtime, logbook
 from immortal.hosts import bb as host_bb
+from support import run_installer
 
 # Captured before tests redirect HOME. A leak writes this live install file.
 LIVE_RUNTIME = Path.home() / ".immortal-agents" / "bb_runtime.json"
 
 REPO = Path(__file__).resolve().parent.parent
-INSTALLER = REPO / "install.sh"
 
 NODE_SH = """#!/bin/sh
 if [ "$1" = "-p" ] && [ "$2" = "process.execPath" ]; then
@@ -308,6 +308,12 @@ class DiscoverTests(Isolated):
         self.assertEqual(scan[:2], [node, bb])
         self.assertEqual(resume[:2], [node, bb])
         self.assertEqual(scan[:2], resume[:2])
+        self.assertTrue(Path(node).is_file())
+        self.assertTrue(Path(bb).is_file())
+        result = json.loads(logbook.LOG_PATH.read_text().splitlines()[-1])
+        self.assertEqual(result["event"], "bb_result")
+        self.assertEqual(json.loads(result["stdout"]), {"ok": True, "delivery": "sent"})
+        self.assertEqual(result["cmd"][:2], [node, bb])
 
     def test_tell_timeout_is_sent_once(self):
         node = self.write_node(self.root / "node" / "node")
@@ -383,48 +389,8 @@ class DiscoverTests(Isolated):
 
 
 class InstallerAndBackgroundTests(Isolated):
-    def run_installer(self, *args, extra_env=None):
-        source, dispatch = INSTALLER.read_text().rsplit('\ncase "$VERB" in\n', 1)
-        mocks = r'''
-STATE_DIR="$INSTALL_TEST_DIR/state"
-PLIST="$INSTALL_TEST_DIR/LaunchAgents/watcher.plist"
-REPO_DIR="$INSTALL_TEST_DIR"
-uname() { echo Darwin; }
-bootout_watcher() { :; }
-launchctl() {
-  case "$1" in
-    bootstrap) return 0 ;;
-    print) printf '\tpid = 123\n' ;;
-    *) return 1 ;;
-  esac
-}
-sleep() { :; }
-setup_cmux() { :; }
-setup_updates() { :; }
-run_updates() { :; }
-# This fixture replaces launchd; loaded-code verification has real-process tests.
-runtime_status() { :; }
-launch_hosts() { :; }
-do_check() { probe_bb; }
-'''
-        script = self.root / "install.sh"
-        (self.root / "watcher.py").write_text("# test\n")
-        (self.root / "state").mkdir(exist_ok=True)
-        (self.root / "LaunchAgents").mkdir(exist_ok=True)
-        (self.root / "state" / "watcher.log").write_text('{"event": "probe", "online": true}\n')
-        script.write_text(source + mocks + '\ncase "$VERB" in\n' + dispatch)
-        env = {
-            **os.environ,
-            "INSTALL_TEST_DIR": str(self.root),
-            "PYTHONPATH": str(REPO),
-            "NO_COLOR": "1",
-        }
-        if extra_env:
-            env.update(extra_env)
-        return subprocess.run(
-            ["/bin/bash", str(script), *args],
-            capture_output=True, text=True, timeout=15, env=env,
-        )
+    def run_installer(self, *args):
+        return run_installer(self.root, *args)
 
     def test_install_check_status_with_nvm_node(self):
         node = self.write_node(self.home / ".nvm" / "versions" / "node" / "v22.19.0" / "bin" / "node")

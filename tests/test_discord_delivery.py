@@ -25,6 +25,15 @@ class DiscordDeliveryTests(unittest.TestCase):
         self.received = queue.Queue()
         self.responses = queue.Queue()
         self.release = threading.Event()
+        self.server = None
+        self.webhook = self.enterContext(mock.patch.object(notify, 'webhook_url',
+            return_value='https://example.invalid/hook'))
+        self.enterContext(mock.patch.object(outcomes.telemetry, 'send'))
+        self.now = datetime.now(timezone.utc)
+
+    def start_server(self):
+        if self.server is not None:
+            return
         owner = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -61,9 +70,7 @@ class DiscordDeliveryTests(unittest.TestCase):
         self.addCleanup(self.server.shutdown)
         self.addCleanup(self.release.set)
         self.url = f'http://127.0.0.1:{self.server.server_port}/webhooks/test?thread_id=42'
-        self.enterContext(mock.patch.object(notify, 'webhook_url', return_value=self.url))
-        self.enterContext(mock.patch.object(outcomes.telemetry, 'send'))
-        self.now = datetime.now(timezone.utc)
+        self.webhook.return_value = self.url
 
     def confirm(self, host='terminal', harness='claude', extra=None, finish=True):
         state = {}
@@ -94,6 +101,7 @@ class DiscordDeliveryTests(unittest.TestCase):
         return state, attempt_id
 
     def child(self, code, url=None):
+        self.start_server()
         env = dict(os.environ, WATCHER_STATE_DIR=str(self.root), DISCORD_WEBHOOK_URL=url or self.url)
         return subprocess.run([sys.executable, '-c', code], env=env,
                               cwd=Path(__file__).resolve().parents[1],
@@ -273,17 +281,14 @@ print(discord_outbox.status())
         self.drain()
         self.assertTrue(self.received.empty())
 
-    def test_bb_submission_confirmation_has_a_success_alert(self):
-        state, attempt_id = self.confirm('bb', 'codex')
-        self.assertIn('Recovery confirmed: Codex in bb', state['discord_outbox'][attempt_id]['text'])
-
     def test_every_host_and_harness_uses_the_same_confirmation_path(self):
-        for host, harness in [('terminal', 'claude'), ('cmux', 'codex'), ('ghostty', 'pi'),
-                              ('bb', 'claude-code'), ('bb', 'codex'), ('bb', 'acp-cursor')]:
+        for host, harness, label in [('terminal', 'claude', 'Claude Code'), ('cmux', 'codex', 'Codex'),
+                                    ('ghostty', 'pi', 'Pi'), ('bb', 'claude-code', 'Claude Code'),
+                                    ('bb', 'codex', 'Codex'), ('bb', 'acp-cursor', 'Cursor')]:
             with self.subTest(host=host, harness=harness):
                 state, attempt_id = self.confirm(host, harness)
                 self.assertEqual(len(state['discord_outbox']), 1)
-                self.assertIn(f'in {host}', state['discord_outbox'][attempt_id]['text'])
+                self.assertIn(f'Recovery confirmed: {label} in {host}', state['discord_outbox'][attempt_id]['text'])
                 self.assertIn('My task', state['discord_outbox'][attempt_id]['text'])
 
     def test_delayed_recovery_after_restart_reaches_discord(self):
@@ -384,6 +389,7 @@ print(discord_outbox.status())
         self.assertNotIn(attempt_id, saved['discord_delivered'])
 
     def test_acknowledgement_can_include_a_long_unicode_message(self):
+        self.start_server()
         self.responses.put((200, {'id': '123456789', 'content': '😀' * 1900}))
         result = notify.post(self.url, '😀' * 1900)
         self.assertEqual(result.message_id, '123456789')
@@ -597,6 +603,7 @@ assert logbook.load_state()['discord_outbox']
         self.received.get(timeout=1)
 
     def test_webhook_secret_never_appears_in_state_or_logs(self):
+        self.start_server()
         self.confirm()
         self.responses.put((401, {'message': 'private details'}))
         self.attempt_once(url=self.url + '&token=VERY_PRIVATE_TOKEN')

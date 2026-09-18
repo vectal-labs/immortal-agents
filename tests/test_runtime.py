@@ -102,29 +102,6 @@ class RuntimeTests(unittest.TestCase):
             stream.write("\n# changed recovery code\n")
         self.assertFalse(self.status()[1])
 
-    def test_missing_corrupt_or_other_process_record_is_unknown(self):
-        self.start()
-        path = self.state / "runtime.json"
-        for content in ("{}", "[]", "null", "{bad", json.dumps({"pid": self.process.pid + 1})):
-            path.write_text(content)
-            output, active = self.status()
-            self.assertFalse(active)
-            self.assertIn("Running version: unknown", output)
-
-    def test_offline_github_never_claims_remote_match(self):
-        self.start()
-        with mock.patch.object(runtime, "github_head", side_effect=OSError("offline")):
-            output, active = runtime.status(self.repo, self.state, self.process.pid)
-        self.assertTrue(active)
-        self.assertIn("GitHub main: unknown", output)
-
-    def test_github_ahead_is_distinct_from_local_activation(self):
-        self.start()
-        with mock.patch.object(runtime, "github_head", return_value="a" * 40):
-            output, active = runtime.status(self.repo, self.state, self.process.pid)
-        self.assertTrue(active)
-        self.assertIn("differs from checkout", output)
-
     def test_new_pid_and_log_with_wrong_loaded_code_do_not_confirm_restart(self):
         self.start()
         self.version_file.write_text('__version__ = "0.1.1"\n')
@@ -135,6 +112,36 @@ class RuntimeTests(unittest.TestCase):
                 mock.patch.object(updater.time, "monotonic", side_effect=[0, 0, 11]):
             with self.assertRaisesRegex(updates.UpdateError, "not verified"):
                 updater.restart_watcher(self.state, self.repo)
+
+
+class RuntimeStatusTests(unittest.TestCase):
+    def setUp(self):
+        self.state = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        identity = {"repo": str(self.state), "version": "0.1.0", "commit": "b" * 40,
+                    "source_hash": "fixture-hash", "modified": False}
+        self.enterContext(mock.patch.object(runtime, "identity", return_value=identity))
+        runtime.record(identity, self.state)
+
+    def test_missing_corrupt_or_other_process_record_is_unknown(self):
+        path = self.state / "runtime.json"
+        for content in ("{}", "[]", "null", "{bad", json.dumps({"pid": os.getpid() + 1})):
+            with self.subTest(content=content):
+                path.write_text(content)
+                output, active = runtime.status(self.state, self.state, os.getpid(), check_github=False)
+                self.assertFalse(active)
+                self.assertIn("Running version: unknown", output)
+
+    def test_offline_github_never_claims_remote_match(self):
+        with mock.patch.object(runtime, "github_head", side_effect=OSError("offline")):
+            output, active = runtime.status(self.state, self.state, os.getpid())
+        self.assertTrue(active)
+        self.assertIn("GitHub main: unknown", output)
+
+    def test_github_ahead_is_distinct_from_local_activation(self):
+        with mock.patch.object(runtime, "github_head", return_value="a" * 40):
+            output, active = runtime.status(self.state, self.state, os.getpid())
+        self.assertTrue(active)
+        self.assertIn("differs from checkout", output)
 
 
 if __name__ == "__main__":
