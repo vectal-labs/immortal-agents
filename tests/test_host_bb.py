@@ -70,27 +70,23 @@ class EvaluateTests(unittest.TestCase):
             DEATH_AT + timedelta(minutes=minutes_after)
         )
 
-    def test_real_network_death_inside_outage_resumes(self):
-        loss, recovery = self.window()
-        decision, reasons, info = evaluate_outage(
-            thread("thr_jg3yv6kthc"), DEAD_EVENTS, loss, recovery
-        )
-        self.assertEqual(decision, "resume")
-        self.assertIn("all_three_agree", reasons)
-        self.assertIn("ENOTFOUND", info["error_detail"])
-
-    def test_retry_notices_are_not_the_final_error(self):
-        err = host_bb.last_error(DEAD_EVENTS)
-        self.assertNotIn("retry", err["detail"].lower())
-
-    def test_death_outside_outage_window_skips(self):
-        loss = iso(DEATH_AT + timedelta(hours=1))
-        recovery = iso(DEATH_AT + timedelta(hours=2))
-        decision, reasons, _ = evaluate_outage(
-            thread("thr_jg3yv6kthc"), DEAD_EVENTS, loss, recovery
-        )
-        self.assertEqual(decision, "skip")
-        self.assertIn("timing_miss", reasons)
+    def test_outage_decision_requires_an_active_failure_in_the_window(self):
+        outside = (iso(DEATH_AT + timedelta(hours=1)), iso(DEATH_AT + timedelta(hours=2)))
+        cases = [
+            (DEAD_EVENTS, "error", self.window(), "resume", "all_three_agree"),
+            (DEAD_EVENTS, "error", outside, "skip", "timing_miss"),
+            (LOGIN_EVENTS, "error", self.window(), "skip", "error_not_network"),
+            (DEAD_EVENTS, "idle", self.window(), "skip", "not_error_status"),
+            ([], "error", self.window(), "skip", "no_provider_error"),
+        ]
+        for events, status, window, expected, reason in cases:
+            with self.subTest(reason=reason):
+                decision, reasons, info = evaluate_outage(thread("thr_x", status=status), events, *window)
+                self.assertEqual(decision, expected)
+                self.assertIn(reason, reasons)
+                if expected == "resume":
+                    self.assertIn("ENOTFOUND", info["error_detail"])
+                    self.assertNotIn("retry", host_bb.last_error(events)["detail"].lower())
 
     def test_death_in_the_stale_dns_gap_is_inside_the_outage(self):
         # A window that ends at the captive probe misses it (the 0013 bug)...
@@ -105,28 +101,6 @@ class EvaluateTests(unittest.TestCase):
         )
         self.assertEqual(decision, "resume")
         self.assertIn("all_three_agree", reasons)
-
-    def test_login_error_skips(self):
-        loss, recovery = self.window()
-        decision, reasons, _ = evaluate_outage(
-            thread("thr_hnu4c2a76j"), LOGIN_EVENTS, loss, recovery
-        )
-        self.assertEqual(decision, "skip")
-        self.assertIn("error_not_network", reasons)
-
-    def test_idle_thread_never_resumes(self):
-        loss, recovery = self.window()
-        decision, reasons, _ = evaluate_outage(
-            thread("thr_x", status="idle"), DEAD_EVENTS, loss, recovery
-        )
-        self.assertEqual(decision, "skip")
-        self.assertIn("not_error_status", reasons)
-
-    def test_error_without_provider_error_event_skips(self):
-        loss, recovery = self.window()
-        decision, reasons, _ = evaluate_outage(thread("thr_x"), [], loss, recovery)
-        self.assertEqual(decision, "skip")
-        self.assertIn("no_provider_error", reasons)
 
 
 class ListFilterTests(unittest.TestCase):
@@ -173,59 +147,37 @@ PI_WIFI_APIS_READY = "2026-09-03T13:53:40Z"
 
 
 class PiOutagePathTests(unittest.TestCase):
-    def test_pi_connection_error_inside_wifi_cut_resumes(self):
-        decision, reasons, info = evaluate_outage(
-            thread("thr_fv5bxrynb7", provider="pi"), PI_EVENTS, PI_WIFI_LOSS, PI_WIFI_APIS_READY
-        )
-        self.assertEqual(decision, "resume")
-        self.assertIn("all_three_agree", reasons)
-        self.assertEqual(info["error_detail"], "Connection error.")
-
-    def test_provider_outage_is_not_a_network_error(self):
-        decision, reasons, _ = evaluate_outage(
-            thread("thr_b2q9cmz7zb", provider="pi"), PI_CAPACITY_EVENTS, PI_WIFI_LOSS, PI_WIFI_APIS_READY
-        )
-        self.assertEqual((decision, reasons[-1]), ("skip", "error_not_network"))
+    def test_wifi_recovery_distinguishes_connection_and_provider_errors(self):
+        for events, expected, reason in ((PI_EVENTS, "resume", "all_three_agree"),
+                                         (PI_CAPACITY_EVENTS, "skip", "error_not_network")):
+            with self.subTest(reason=reason):
+                decision, reasons, info = evaluate_outage(thread("thr_x", provider="pi"), events,
+                                                         PI_WIFI_LOSS, PI_WIFI_APIS_READY)
+                self.assertEqual((decision, reasons[-1]), (expected, reason))
+                if expected == "resume":
+                    self.assertEqual(info["error_detail"], "Connection error.")
 
 
 class ProviderOutageTests(unittest.TestCase):
-    def evaluate(self, events, after_secs, thread_id="thr_x"):
-        err_at = host_bb.last_error(events)["at"]
-        return evaluate_provider(
-            thread(thread_id, provider="pi"), events, err_at + timedelta(seconds=after_secs)
-        )
-
-    def test_at_capacity_resumes_after_the_retry_delay(self):
-        decision, reasons, info = self.evaluate(PI_CAPACITY_EVENTS, 150)
-        self.assertEqual(decision, "resume")
-        self.assertIn("provider_outage", reasons)
-        self.assertIn("at capacity", info["error_detail"])
-
-    def test_temporarily_unavailable_resumes(self):
-        decision, _, info = self.evaluate(PI_UNAVAILABLE_EVENTS, 150)
-        self.assertEqual(decision, "resume")
-        self.assertIn("Service temporarily unavailable", info["error_detail"])
-
-    def test_fresh_error_waits(self):
-        decision, reasons, _ = self.evaluate(PI_CAPACITY_EVENTS, 30)
-        self.assertEqual((decision, reasons[-1]), ("wait", "retry_delay"))
-
-    def test_stale_error_skips(self):
-        decision, reasons, _ = self.evaluate(PI_CAPACITY_EVENTS, 3 * 3600)
-        self.assertEqual((decision, reasons[-1]), ("skip", "error_too_old"))
-
-    def test_network_error_is_left_to_the_outage_path(self):
-        decision, reasons, _ = self.evaluate(PI_EVENTS, 150)
-        self.assertEqual((decision, reasons[-1]), ("skip", "network_error_belongs_to_outage_path"))
-
-    def test_unlisted_error_is_unknown_not_resumed(self):
-        decision, reasons, _ = self.evaluate(LOGIN_EVENTS, 150)
-        self.assertEqual((decision, reasons[-1]), ("unknown", "error_not_whitelisted"))
-
-    def test_idle_thread_skips(self):
-        now = host_bb.last_error(PI_CAPACITY_EVENTS)["at"] + timedelta(seconds=150)
-        decision, _, _ = evaluate_provider(thread("t", status="idle"), PI_CAPACITY_EVENTS, now)
-        self.assertEqual(decision, "skip")
+    def test_provider_recovery_decisions(self):
+        cases = [
+            (PI_CAPACITY_EVENTS, 150, "error", "resume", "provider_outage", "at capacity"),
+            (PI_UNAVAILABLE_EVENTS, 150, "error", "resume", "provider_outage", "Service temporarily unavailable"),
+            (PI_CAPACITY_EVENTS, 30, "error", "wait", "retry_delay", None),
+            (PI_CAPACITY_EVENTS, 10800, "error", "skip", "error_too_old", None),
+            (PI_EVENTS, 150, "error", "skip", "network_error_belongs_to_outage_path", None),
+            (LOGIN_EVENTS, 150, "error", "unknown", "error_not_whitelisted", None),
+            (PI_CAPACITY_EVENTS, 150, "idle", "skip", None, None),
+        ]
+        for events, age, status, expected, reason, detail in cases:
+            with self.subTest(status=status, age=age, reason=reason, detail=detail):
+                now = host_bb.last_error(events)["at"] + timedelta(seconds=age)
+                decision, reasons, info = evaluate_provider(thread("thr_x", status=status, provider="pi"), events, now)
+                self.assertEqual(decision, expected)
+                if reason:
+                    self.assertIn(reason, reasons)
+                if detail:
+                    self.assertIn(detail, info["error_detail"])
 
 
 class ProviderCheckLoopTests(unittest.TestCase):

@@ -312,23 +312,32 @@ class UpdateCommandTests(unittest.TestCase):
         with mock.patch.object(updater, "git", side_effect=local_git):
             return updater.apply(self.repo, self.state, self.home)
 
-    def test_tagged_release_fast_forwards_without_touching_preferences(self):
+    def test_upgrade_preserves_preferences_migrates_before_restart_and_repairs_same_version(self):
         target = self.release()
-        self.assertIn("restart confirmed", self.apply())
+        record_restart = self.restart.side_effect
+        def restart(state_dir, repo):
+            self.assertEqual(self.git("rev-parse", "HEAD"), target)
+            self.assertTrue((self.home / "migration-completed").exists())
+            record_restart(state_dir, repo)
+        self.restart.side_effect = restart
+        result = self.apply()
+        self.assertIn("restart confirmed", result)
+        self.assertIn("fixture components ready", result)
         self.assertEqual(self.git("rev-parse", "HEAD"), target)
         self.restart.assert_called_once_with(self.state, self.repo.resolve())
         for name in ("state.json", "telemetry", "discord_webhook"):
             self.assertEqual((self.state / name).read_text(), "preserve")
         self.assertFalse(updates.load_state(self.state)["restart_required"])
-
-    def test_component_migration_runs_after_checkout_and_before_restart(self):
-        target = self.release()
-        def restart(state_dir, repo):
-            self.assertEqual(self.git("rev-parse", "HEAD"), target)
-            self.assertTrue((self.home / "migration-completed").exists())
-        self.restart.side_effect = restart
-        self.assertIn("fixture components ready", self.apply())
         self.assertFalse(updates.load_state(self.state)["migration_required"])
+        (self.home / "migration-completed").unlink()
+        self.restart.reset_mock()
+        self.assertIn("fixture components ready", self.apply())
+        self.assertTrue((self.home / "migration-completed").exists())
+        self.restart.assert_not_called()
+        (self.state / "runtime.json").unlink()
+        self.apply()
+        self.restart.assert_called_once_with(self.state, self.repo.resolve())
+        self.assertFalse(updates.load_state(self.state)["restart_required"])
 
     def test_component_failure_is_retryable_at_same_repo_version(self):
         target = self.release()
@@ -341,24 +350,6 @@ class UpdateCommandTests(unittest.TestCase):
         (self.home / "fail-migration").unlink()
         self.assertIn("confirmed", self.apply())
         self.assertFalse(updates.load_state(self.state)["migration_required"])
-
-    def test_same_version_update_runs_component_migration(self):
-        self.release()
-        self.apply()
-        (self.home / "migration-completed").unlink()
-        self.restart.reset_mock()
-        self.assertIn("fixture components ready", self.apply())
-        self.assertTrue((self.home / "migration-completed").exists())
-        self.restart.assert_not_called()
-
-    def test_same_version_update_restarts_when_running_record_is_missing(self):
-        self.release()
-        self.apply()
-        (self.state / "runtime.json").unlink()
-        self.restart.reset_mock()
-        self.apply()
-        self.restart.assert_called_once_with(self.state, self.repo.resolve())
-        self.assertFalse(updates.load_state(self.state)["restart_required"])
 
     def test_ship_pushes_then_activates_the_exact_commit(self):
         remote = self.tmp / "remote.git"
@@ -400,14 +391,6 @@ class UpdateCommandTests(unittest.TestCase):
             updater.activate(self.repo, self.state, self.home)
         self.assertTrue(updates.load_state(self.state)["restart_required"])
         self.assertEqual(self.git("rev-parse", "HEAD"), self.before)
-
-    def test_ship_refuses_local_changes_before_network_or_restart(self):
-        (self.repo / "untracked").write_text("mine")
-        with mock.patch.object(updater.runtime, "github_head") as remote:
-            with self.assertRaises(updates.UpdateError):
-                updater.activate(self.repo, self.state, self.home, ship=True)
-        remote.assert_not_called()
-        self.restart.assert_not_called()
 
     def test_user_edit_during_migration_is_preserved_without_restart(self):
         target = self.release()
@@ -485,6 +468,11 @@ class UpdateCommandTests(unittest.TestCase):
         with self.assertRaises(updates.UpdateError):
             self.apply()
         self.feed.assert_not_called()
+        with mock.patch.object(updater.runtime, "github_head") as remote:
+            with self.assertRaises(updates.UpdateError):
+                updater.activate(self.repo, self.state, self.home, ship=True)
+        remote.assert_not_called()
+        self.restart.assert_not_called()
         (self.repo / "untracked").unlink()
         self.git("remote", "set-url", "origin", "https://example.com/wrong.git")
         with self.assertRaises(updates.UpdateError):
@@ -548,20 +536,21 @@ class UpdateCommandTests(unittest.TestCase):
         self.assertEqual((self.repo / "settings.txt").read_text(), "local preferences")
         self.restart.assert_not_called()
 
-    def test_offline_update_leaves_code_and_watcher_untouched(self):
-        self.feed.side_effect = OSError("offline")
-        with self.assertRaises(OSError):
-            self.apply()
-        self.assertEqual(self.git("rev-parse", "HEAD"), self.before)
-        self.restart.assert_not_called()
-
-    def test_commit_mismatch_never_changes_checkout(self):
+    def test_offline_unpublished_or_mismatched_releases_never_change_checkout(self):
         self.release()
-        self.feed.return_value["releases"][0]["commit"] = "b" * 40
-        with self.assertRaises(updates.UpdateError):
-            self.apply()
-        self.assertEqual(self.git("rev-parse", "HEAD"), self.before)
-        self.restart.assert_not_called()
+        valid = copy.deepcopy(self.feed.return_value)
+        mismatched = copy.deepcopy(valid)
+        mismatched["releases"][0]["commit"] = "b" * 40
+        for feed, published, error in ((OSError("offline"), True, OSError),
+                                       (valid, False, updates.UpdateError),
+                                       (mismatched, True, updates.UpdateError)):
+            with self.subTest(feed=feed, published=published):
+                self.feed.side_effect = [feed]
+                self.public.return_value = published
+                with self.assertRaises(error):
+                    self.apply()
+                self.assertEqual(self.git("rev-parse", "HEAD"), self.before)
+                self.restart.assert_not_called()
 
     def test_local_commits_are_not_overwritten_or_merged(self):
         self.release()
@@ -572,13 +561,6 @@ class UpdateCommandTests(unittest.TestCase):
             self.apply()
         self.assertEqual(self.git("rev-parse", "HEAD"), head)
         self.restart.assert_not_called()
-
-    def test_unpublished_release_is_refused(self):
-        self.release()
-        self.public.return_value = False
-        with self.assertRaises(updates.UpdateError):
-            self.apply()
-        self.assertEqual(self.git("rev-parse", "HEAD"), self.before)
 
     def test_restart_failure_is_reported_and_can_be_retried(self):
         target = self.release()

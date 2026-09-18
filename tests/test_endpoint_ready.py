@@ -62,24 +62,15 @@ class EndpointReadyTests(unittest.TestCase):
             time.sleep(.01)
         self.fail('Endpoint did not settle within the test deadline')
 
-    def test_auth_and_method_errors_demonstrate_contact_without_credentials(self):
-        for status in (200, 204, 400, 401, 404, 405):
-            with self.subTest(status=status):
-                self.server.status = status
-                self.assertEqual(ready.probe_endpoint(self.url), ('reachable', f'http_{status}'))
-
-    def test_overload_and_server_errors_are_not_ready(self):
-        for status in (429, 500, 502, 503):
-            with self.subTest(status=status):
-                self.server.status = status
-                self.assertEqual(ready.probe_endpoint(self.url), ('unreachable', f'http_{status}'))
-
-    def test_redirect_is_not_followed_and_forbidden_is_unknown(self):
-        for status in (302, 403):
-            self.server.status = status
-            before = self.server.requests
-            self.assertEqual(ready.probe_endpoint(self.url), ('unknown', f'http_{status}'))
-            self.assertEqual(self.server.requests, before + 1)
+    def test_http_responses_classify_readiness_without_following_redirects(self):
+        for expected, statuses in (('reachable', (200, 204, 400, 401, 404, 405)),
+                                   ('unreachable', (429, 500, 502, 503)), ('unknown', (302, 403))):
+            for status in statuses:
+                with self.subTest(status=status):
+                    self.server.status = status
+                    before = self.server.requests
+                    self.assertEqual(ready.probe_endpoint(self.url), (expected, f'http_{status}'))
+                    self.assertEqual(self.server.requests, before + 1)
 
     def test_tls_failure_is_not_readiness(self):
         self.assertEqual(ready.probe_endpoint(self.url.replace('http:', 'https:'))[0], 'unreachable')

@@ -1,5 +1,6 @@
 """Native retry observation through actual SQLite and rollout files."""
 
+import copy
 import json
 import sqlite3
 import tempfile
@@ -221,16 +222,16 @@ class NativeRecoveryTests(unittest.TestCase):
         self.tick()
         self.assertEqual(list(self.state['discord_outbox']), ['native-codex-recovery-1'])
         self.assertFalse(self.state['native_codex'][str(self.home)]['pending'])
+        self.state = json.loads(self.saved.read_text())
+        receipt = self.state['recovery_confirmations']['native-codex-recovery-1']
+        self.assertEqual(receipt['provider_session_id'], 'session-1')
+        self.assertNotIn('path', receipt)
+        self.assertIn('session-1', self.state['discord_outbox']['native-codex-recovery-1']['text'])
 
     def test_dedicated_event_without_retained_start_is_still_success(self):
         self.native_event('recovery_confirmed', 1001)
         self.tick()
         self.assertEqual(len(self.state['discord_outbox']), 1)
-
-    def test_started_event_never_counts_as_success(self):
-        self.native_event('recovery_started', 1000)
-        self.tick()
-        self.assertFalse(self.state.get('discord_outbox'))
 
     def test_dedicated_event_deduplicates_legacy_rollout_confirmation(self):
         self.retry()
@@ -283,17 +284,6 @@ class NativeRecoveryTests(unittest.TestCase):
         self.tick()
         self.assertEqual(self.state['recovery_confirmations'][attempt_id], receipt)
 
-    def test_ephemeral_native_receipt_has_safe_session_label(self):
-        self.rollout.unlink()
-        self.native_event('recovery_started', 1000)
-        self.native_event('recovery_confirmed', 1001)
-        self.tick()
-        self.state = json.loads(self.saved.read_text())
-        receipt = self.state['recovery_confirmations']['native-codex-recovery-1']
-        self.assertEqual(receipt['provider_session_id'], 'session-1')
-        self.assertNotIn('path', receipt)
-        self.assertIn('session-1', self.state['discord_outbox']['native-codex-recovery-1']['text'])
-
     def test_central_dedupe_does_not_create_native_receipt(self):
         self.retry()
         self.output()
@@ -309,17 +299,16 @@ class NativeRecoveryTests(unittest.TestCase):
             'turn_id': turn, 'content_item_kinds': ['assistant.text']}
         self.event(at, 'response_item', payload)
 
-    def test_legacy_metadata_binds_same_turn_text(self):
+    def test_legacy_metadata_binds_same_turn_text_and_tools(self):
+        baseline = copy.deepcopy(self.state)
         self.retry()
-        self.metadata_item(1001, 'turn-1')
-        self.tick()
-        self.assertEqual(len(self.state['discord_outbox']), 1)
-
-    def test_legacy_metadata_binds_same_turn_tool(self):
-        self.retry()
-        self.metadata_item(1001, 'turn-1', tool=True)
-        self.tick()
-        self.assertEqual(len(self.state['discord_outbox']), 1)
+        for tool in (False, True):
+            with self.subTest(tool=tool):
+                self.state = copy.deepcopy(baseline)
+                self.rollout.write_text('')
+                self.metadata_item(1001, 'turn-1', tool=tool)
+                self.tick()
+                self.assertEqual(len(self.state['discord_outbox']), 1)
 
     def test_changed_legacy_metadata_cannot_confirm_previous_turn(self):
         self.metadata_item(999, 'turn-1')
@@ -339,20 +328,16 @@ class NativeRecoveryTests(unittest.TestCase):
         self.tick()
         self.assertEqual(len(self.state['discord_outbox']), 1)
 
-    def test_native_terminal_failure_never_reports_success(self):
+    def test_native_terminal_failure_blocks_late_success_but_not_new_episodes(self):
         self.native_event('recovery_started', 1000)
         self.tick()
+        self.assertFalse(self.state.get('discord_outbox'))
         self.native_event('recovery_unconfirmed', 1001)
         self.tick()
         self.assertFalse(self.state.get('discord_outbox'))
         self.assertFalse(self.state['native_codex'][str(self.home)]['pending'])
         self.assertIn('recovery-1', self.state['native_codex'][str(self.home)]['completed_events'])
         self.assertFalse(self.state.get('recovery_confirmations'))
-
-    def test_native_terminal_failure_blocks_late_success_after_restart(self):
-        self.native_event('recovery_started', 1000)
-        self.native_event('recovery_unconfirmed', 1001)
-        self.tick()
         self.state = json.loads(self.saved.read_text())
         self.native_event('recovery_confirmed', 1002)
         self.retry(at=1000)
@@ -360,10 +345,6 @@ class NativeRecoveryTests(unittest.TestCase):
         self.tick()
         self.assertFalse(self.state.get('discord_outbox'))
         self.assertFalse(self.state['native_codex'][str(self.home)]['pending'])
-
-    def test_new_native_episode_after_failure_can_succeed(self):
-        self.native_event('recovery_started', 1000)
-        self.native_event('recovery_unconfirmed', 1001)
         self.native_event('recovery_started', 1002, 'recovery-2')
         self.native_event('recovery_confirmed', 1003, 'recovery-2')
         self.tick()
@@ -379,40 +360,18 @@ class NativeRecoveryTests(unittest.TestCase):
             receipt['provider_turn_id'] = provider_turn
         self.state['recovery_confirmations'] = {'watcher-id': receipt}
 
-    def test_bb_receipt_matches_accepted_interval_not_bb_turn_namespace(self):
-        self.bb_receipt()
+    def test_bb_receipt_dedup_matches_acceptance_and_native_turn(self):
+        baseline = copy.deepcopy(self.state)
         self.retry()
         self.output()
-        self.tick()
-        self.assertFalse(self.state.get('discord_outbox'))
-
-    def test_bb_receipt_cannot_match_before_accepted(self):
-        self.bb_receipt(accepted=1000.5)
-        self.retry()
-        self.output()
-        self.tick()
-        self.assertEqual(len(self.state['discord_outbox']), 1)
-
-    def test_bb_receipt_unknown_native_turn_requires_acceptance(self):
-        self.bb_receipt(accepted=None)
-        self.retry()
-        self.output()
-        self.tick()
-        self.assertEqual(len(self.state['discord_outbox']), 1)
-
-    def test_bb_receipt_known_native_turn_supports_legacy_sent_time(self):
-        self.bb_receipt(accepted=None, provider_turn='turn-1')
-        self.retry()
-        self.output()
-        self.tick()
-        self.assertFalse(self.state.get('discord_outbox'))
-
-    def test_bb_receipt_wrong_native_turn_does_not_dedupe(self):
-        self.bb_receipt(provider_turn='other-native-turn')
-        self.retry()
-        self.output()
-        self.tick()
-        self.assertEqual(len(self.state['discord_outbox']), 1)
+        cases = [(950, None, 0), (1000.5, None, 1), (None, None, 1),
+                 (None, 'turn-1', 0), (950, 'other-native-turn', 1)]
+        for accepted, turn, alerts in cases:
+            with self.subTest(accepted=accepted, turn=turn):
+                self.state = copy.deepcopy(baseline)
+                self.bb_receipt(accepted=accepted, provider_turn=turn)
+                self.tick()
+                self.assertEqual(len(self.state.get('discord_outbox', {})), alerts)
 
     def test_first_recovery_after_missing_log_database_is_not_baselined_away(self):
         logs = self.home / 'logs_2.sqlite'

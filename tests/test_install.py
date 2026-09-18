@@ -48,38 +48,26 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("codex-component:install", result.stdout)
 
-    def test_unavailable_codex_does_not_report_success(self):
-        result, _ = self.run_install(args=("--codex-recovery",), codex_status=1)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertNotIn("All set.", result.stdout)
-
-    def test_codex_rollback_dispatches_without_reinstalling_watcher(self):
-        result, _ = self.run_install(args=("rollback-codex",))
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("codex-component:rollback", result.stdout)
-        self.assertNotIn("codex-component:install", result.stdout)
-
-    def test_codex_check_dispatches_without_host_permission_prompts(self):
-        result, _ = self.run_install(args=("check-codex",))
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("codex-component:check", result.stdout)
-        self.assertNotIn("codex-component:install", result.stdout)
+    def test_component_commands_do_not_reinstall_the_watcher(self):
+        for verb, component in (("rollback-codex", "rollback"), ("check-codex", "check")):
+            with self.subTest(verb=verb):
+                result, _ = self.run_install(args=(verb,))
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(f"codex-component:{component}", result.stdout)
+                self.assertNotIn("codex-component:install", result.stdout)
 
     def test_codex_opt_in_rejects_other_verbs(self):
         result, _ = self.run_install(args=("update", "--codex-recovery"))
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("only valid with install", result.stderr)
 
-    def test_unattended_install_defaults_off(self):
-        result, choice = self.run_install()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(choice, "off")
-        self.assertIn("No interactive telemetry consent", result.stdout)
-
-    def test_piped_yes_is_not_interactive_consent(self):
-        result, choice = self.run_install(answer="y\n")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(choice, "off")
+    def test_unattended_install_requires_explicit_consent(self):
+        for answer in ("", "y\n"):
+            with self.subTest(answer=answer):
+                result, choice = self.run_install(answer=answer)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(choice, "off")
+                self.assertIn("No interactive telemetry consent", result.stdout)
 
     def test_unattended_install_can_explicitly_enable_telemetry(self):
         for saved in (None, "on", "off"):
@@ -98,22 +86,14 @@ class InstallTests(unittest.TestCase):
                 self.assertIn(f"Optional telemetry: {saved or 'off'}", result.stdout)
                 self.assertEqual(choice, saved)
 
-    def test_failed_status_still_reports_telemetry(self):
-        result, choice = self.run_install(saved="on", args=("status",), status=1)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("Optional telemetry: on", result.stdout)
-        self.assertEqual(choice, "on")
-
-    def test_running_old_code_fails_status(self):
-        result, _ = self.run_install(args=("status",), runtime_status=1)
-        self.assertEqual(result.returncode, 1)
-        self.assertIn("runtime-pid:123", result.stdout)
-
-    def test_install_does_not_claim_success_for_unverified_code(self):
-        result, _ = self.run_install(runtime_status=1)
-        self.assertEqual(result.returncode, 1)
-        self.assertIn("Running code was not verified", result.stdout)
-        self.assertNotIn("All set.", result.stdout)
+    def test_failed_status_preserves_consent_and_reports_the_problem(self):
+        for failure, message in (({"status": 1}, "Optional telemetry: on"),
+                                 ({"runtime_status": 1}, "runtime-pid:123")):
+            with self.subTest(failure=failure):
+                result, choice = self.run_install(saved="on", args=("status",), **failure)
+                self.assertEqual(result.returncode, 1)
+                self.assertIn(message, result.stdout)
+                self.assertEqual(choice, "on")
 
     def test_unattended_reinstall_preserves_saved_choice(self):
         for saved in ("on", "off"):
@@ -129,28 +109,28 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(choice, "off")
 
     def test_interactive_choices(self):
-        for answer, expected in (("y\n", "on"), ("n\n", "off"), ("\n", "on")):
+        for answer, expected in (("y\n", "on"), ("n\n", "off"), ("\n", "on"), ("", "off")):
             with self.subTest(answer=answer):
                 result, choice = self.run_install(answer=answer, terminal=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(choice, expected)
 
-    def test_interactive_eof_is_not_consent(self):
-        result, choice = self.run_install(terminal=True)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(choice, "off")
-
-    def test_failed_update_checker_is_not_reported_as_all_set(self):
-        result, choice = self.run_install(saved="on", update_status=1)
-        self.assertEqual(result.returncode, 1)
-        self.assertEqual(choice, "on")
-        self.assertIn("update alerts failed", result.stdout)
-        self.assertNotIn("All set.", result.stdout)
-
-    def test_failed_watcher_start_returns_failure(self):
-        result, _ = self.run_install(args=("--no-telemetry",), status=1)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("Install failed.", result.stdout)
+    def test_install_failures_never_claim_success(self):
+        cases = [
+            ({"args": ("--codex-recovery",), "codex_status": 1}, None),
+            ({"runtime_status": 1}, "Running code was not verified"),
+            ({"saved": "on", "update_status": 1}, "update alerts failed"),
+            ({"args": ("--no-telemetry",), "status": 1}, "Install failed."),
+        ]
+        for options, message in cases:
+            with self.subTest(options=options):
+                result, choice = self.run_install(**options)
+                self.assertEqual(result.returncode, 1)
+                self.assertNotIn("All set.", result.stdout)
+                if message:
+                    self.assertIn(message, result.stdout)
+                if options.get("saved"):
+                    self.assertEqual(choice, options["saved"])
 
 
 if __name__ == "__main__":

@@ -138,33 +138,24 @@ class ReconnectSteerCase(unittest.TestCase):
 
 
 class ReconnectSteerTests(ReconnectSteerCase):
-    # Reproduction: before ADR 0052 nothing reached an active thread here.
-    def test_short_outage_steers_active_thread_after_grace(self):
-        self.reconnect(60)
-        self.assertEqual(self.tells(), [tell("worker")])
-        self.assertFalse(self.state.get("pending_recovery"))  # below MIN_OUTAGE_SECS
-
     def test_long_outage_steers_active_thread_and_keeps_failed_recovery_pending(self):
         self.enterContext(mock.patch.object(revive, "run_recheck"))
         self.reconnect(600)
         self.assertEqual(self.tells(), [tell("worker")])
         self.assertTrue(self.state["pending_recovery"])
 
-    def test_wake_while_online_steers_active_thread(self):
-        self.wake()
-        self.assertEqual(self.tells(), [tell("worker")])
+    def test_online_wakes_nudge_but_clock_jitter_does_not(self):
+        for seconds, expected in ((1200, [tell("worker")]), (12, [tell("worker")]), (3, [])):
+            with self.subTest(gap=seconds):
+                self.state = {"online": True, "outage_started_at": None, "revived": {}}
+                self.events.clear()
+                self.send.reset_mock()
+                self.wake(seconds=seconds)
+                self.assertEqual(self.tells(), expected)
 
     def test_ordinary_online_ticks_send_nothing(self):
         for _ in range(3):
             self.tick()
-        self.assertEqual(self.tells(), [])
-
-    def test_brief_lid_close_already_online_steers_active_thread(self):
-        self.wake(seconds=12)
-        self.assertEqual(self.tells(), [tell("worker")])
-
-    def test_clock_jitter_is_not_a_wake(self):
-        self.wake(seconds=3)
         self.assertEqual(self.tells(), [])
 
     def test_slow_recovery_scan_is_not_a_wake(self):
@@ -202,13 +193,8 @@ class ReconnectSteerTests(ReconnectSteerCase):
             thread("asking", hasPendingInteraction=True),
             thread("remote", host="host_other"),
             thread("devin", provider="acp-devin-cli"),
-            thread("worker"),
+            *[thread(p, provider=p) for p in bb.PROVIDERS],
         ]
-        self.reconnect(60)
-        self.assertEqual(self.tells(), [tell("worker")])
-
-    def test_every_supported_provider_is_steered(self):
-        self.threads = [thread(p, provider=p) for p in bb.PROVIDERS]
         self.reconnect(60)
         self.assertEqual(sorted(t[2] for t in self.tells()), sorted(bb.PROVIDERS))
 
@@ -332,15 +318,19 @@ class ReconnectSteerTests(ReconnectSteerCase):
         self.reconnect(5)  # A later reconnect is independent, not a deferred nudge.
         self.assertEqual(self.tells(), [tell("worker")])
 
-    def test_user_message_during_send_preflight_cancels_nudge(self):
+    def test_input_or_progress_arriving_during_preflight_cancels_nudge(self):
+        self.threads = [thread("input"), thread("progress")]
         def read(args):
-            if args == ["thread", "queue", "list", "worker"]:
-                self.user_message()
+            if args == ["thread", "queue", "list", "input"]:
+                self.user_message(ref="input")
+            if args == ["thread", "log", "progress", "--all"]:
+                self.event("item/reasoning/textDelta", {"delta": "Thinking"}, ref="progress")
             return self.read_bb(args)
         bb.bb_json.side_effect = read
         self.reconnect(60)
         self.assertEqual(self.tells(), [])
-        self.assertEqual(self.episode()["sent"]["worker"]["delivery"], "superseded")
+        for ref in ("input", "progress"):
+            self.assertEqual(self.episode()["sent"][ref]["delivery"], "superseded")
 
     def test_user_input_before_wake_cancels_nudge(self):
         self.user_message()
@@ -394,34 +384,22 @@ class ReconnectSteerTests(ReconnectSteerCase):
         self.assertEqual(self.tells(), [])
         self.assertEqual(self.episode()["sent"]["worker"]["delivery"], "superseded")
 
-    def test_thread_that_finished_before_the_send_is_skipped(self):
-        def read(args):
-            if args[:2] == ["thread", "show"]:
-                return {"thread": thread("worker", status="idle")}
-            return self.read_bb(args)
-        bb.bb_json.side_effect = read
-        self.reconnect(60)
-        self.tick()
-        self.assertEqual(self.tells(), [])
-        self.assertEqual(self.episode()["sent"]["worker"]["delivery"], "superseded")
-
-    def test_question_opened_while_readiness_was_delayed_blocks_the_send(self):
+    def test_fresh_status_and_interactions_override_the_candidate_snapshot(self):
+        self.threads = [thread(ref) for ref in ("finished", "question", "resolved", "worker")]
         self.dns.return_value = False
         self.reconnect(60)
+        self.threads[0]["status"] = "idle"
         # Recorded from a live Claude Code thread blocked on AskUserQuestion (2026-09-10).
-        self.interactions["worker"] = [{"id": "pint_zz4fedbwy4", "status": "pending", "resolvedAt": None,
-                                        "payload": {"kind": "user_question"}}]
+        self.interactions["question"] = [{"id": "pint_zz4fedbwy4", "status": "pending", "resolvedAt": None,
+                                          "payload": {"kind": "user_question"}}]
+        self.interactions["resolved"] = [{"id": "pint_old", "status": "resolved", "resolvedAt": 5}]
         self.dns.return_value = True
         self.tick()
         self.settle()
         self.tick()
-        self.assertEqual(self.tells(), [])
-        self.assertEqual(self.episode()["sent"]["worker"]["delivery"], "superseded")
-
-    def test_resolved_interactions_do_not_block_the_send(self):
-        self.interactions["worker"] = [{"id": "pint_old", "status": "resolved", "resolvedAt": 5}]
-        self.reconnect(60)
-        self.assertEqual(self.tells(), [tell("worker")])
+        self.assertEqual(self.tells(), [tell("resolved"), tell("worker")])
+        for ref in ("finished", "question"):
+            self.assertEqual(self.episode()["sent"][ref]["delivery"], "superseded")
 
     def test_one_failed_endpoint_lookup_does_not_block_other_threads(self):
         self.threads = [thread("codex", provider="codex"), thread("worker")]
@@ -701,7 +679,8 @@ class ReconnectProgressTests(ReconnectSteerCase):
         super().reconnect(outage_secs, wait=False)
 
     def test_quiet_thread_gets_one_nudge_after_30_seconds(self):
-        self.reconnect(5)
+        self.reconnect(60)
+        self.assertFalse(self.state.get("pending_recovery"))  # below MIN_OUTAGE_SECS
         self.assertEqual(self.tells(), [])
         self.advance(29)
         self.tick()
@@ -860,16 +839,6 @@ class ReconnectProgressTests(ReconnectSteerCase):
         self.settle()
         self.assertEqual(sorted(t[2] for t in self.tells()), ["completed", "old-turn"])
         self.assertEqual(self.episode()["sent"]["worker"]["delivery"], "superseded")
-
-    def test_progress_arriving_during_final_preflight_blocks_send(self):
-        self.reconnect(5)
-        def read(args):
-            if args == ["thread", "log", "worker", "--all"]:
-                self.event("item/reasoning/textDelta", {"delta": "Thinking"})
-            return self.read_bb(args)
-        bb.bb_json.side_effect = read
-        self.settle()
-        self.assertEqual(self.tells(), [])
 
     def test_completion_racing_status_read_cancels_nudge(self):
         self.reconnect(5)

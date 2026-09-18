@@ -48,59 +48,34 @@ class DeliveryTests(unittest.TestCase):
     def target(self):
         return host.list_targets()[0]
 
-    def test_pending_interaction_created_after_scan_prevents_dispatch(self):
+    def test_native_retry_preserves_original_identity_and_attempt(self):
+        for request, prior_attempt in (("request-1", 1), ("retry-3", 3)):
+            with self.subTest(request=request):
+                if prior_attempt > 1:
+                    self.events[0]["data"].update(requestId=request, retryOfRequestId="request-1", retryAttempt=prior_attempt)
+                host._LOG_CACHE.clear()
+                self.command.reset_mock()
+                target = self.target()
+                self.assertEqual(target["bb_retry"], {"original_request_id": "request-1", "attempt": prior_attempt + 1})
+                self.assertEqual(host.resume(target), "sent")
+                self.command.assert_called_once_with(["thread", "retry", "thr_test", "--turn", request, "--json"])
+
+    def test_dispatch_results_distinguish_delivery_rejection_and_uncertainty(self):
         target = self.target()
-        self.interactions.append({"id": "approval-new"})
-        self.assertEqual(host.resume(target), "superseded")
-        self.command.assert_not_called()
-
-    def test_lost_delivery_reply_is_unknown_and_sent_once(self):
-        target = self.target()
-        self.command.side_effect = subprocess.TimeoutExpired(["bb", "thread", "retry"], 30)
-        self.assertEqual(host.resume(target), "unknown")
-        self.command.assert_called_once()
-
-    def test_native_retry_guards_the_original_request(self):
-        target = self.target()
-        self.assertEqual(target["bb_retry"], {"original_request_id": "request-1", "attempt": 2})
-        self.assertEqual(host.resume(target), "sent")
-        self.command.assert_called_once_with(
-            ["thread", "retry", "thr_test", "--turn", "request-1", "--json"])
-
-    def test_native_retry_observation_follows_original_request_and_attempt(self):
-        self.events[0]["data"].update(requestId="retry-3", retryOfRequestId="request-1", retryAttempt=3)
-        target = self.target()
-        self.assertEqual(target["bb_retry"], {"original_request_id": "request-1", "attempt": 4})
-        self.assertEqual(host.resume(target), "sent")
-        self.command.assert_called_once_with(
-            ["thread", "retry", "thr_test", "--turn", "retry-3", "--json"])
-
-    def test_queued_delivery_is_retained(self):
-        self.command.return_value.stdout = '{"ok":true,"delivery":"queued","queuedMessageId":"q1"}'
-        self.assertEqual(host.resume(self.target()), "queued")
-        self.command.assert_called_once()
-
-    def test_command_error_after_dispatch_is_unknown(self):
-        self.command.return_value.returncode = 1
-        self.command.return_value.stderr = "Lost connection after submitting"
-        self.assertEqual(host.resume(self.target()), "unknown")
-        self.command.assert_called_once()
-
-    def test_unrecognized_delivery_reply_is_unknown(self):
-        target = self.target()
-        for reply in ("", "not-json", "[]", "null", "{}", '{"ok":false,"delivery":"sent"}',
-                      '{"ok":true,"delivery":"accepted"}'):
-            with self.subTest(reply=reply):
-                self.command.return_value.stdout = reply
-                self.assertEqual(host.resume(target), "unknown")
-
-    def test_native_request_guard_rejection_is_superseded(self):
-        target = self.target()
-        for code in ("no_failed_turn", "retry_already_queued"):
-            with self.subTest(code=code):
-                self.command.return_value.returncode = 1
-                self.command.return_value.stderr = code
-                self.assertEqual(host.resume(target), "superseded")
+        cases = [
+            (subprocess.TimeoutExpired(["bb", "thread", "retry"], 30), "unknown"),
+            (host.BbRuntimeError("bb could not be started"), "not_sent"),
+            (subprocess.CompletedProcess([], 0, '{"ok":true,"delivery":"queued","queuedMessageId":"q1"}', ""), "queued"),
+            (subprocess.CompletedProcess([], 1, "", "Lost connection after submitting"), "unknown"),
+        ]
+        cases += [(subprocess.CompletedProcess([], 0, reply, ""), "unknown") for reply in
+                  ("", "not-json", "[]", "null", "{}", '{"ok":false,"delivery":"sent"}', '{"ok":true,"delivery":"accepted"}')]
+        cases += [(subprocess.CompletedProcess([], 1, "", code), "superseded")
+                  for code in ("no_failed_turn", "retry_already_queued")]
+        for reply, expected in cases:
+            with self.subTest(reply=reply), mock.patch.object(host, "run_bb", side_effect=[reply]) as command:
+                self.assertEqual(host.resume(target), expected)
+                command.assert_called_once()
 
     def test_user_thread_changes_prevent_dispatch(self):
         target = self.target()
@@ -117,37 +92,29 @@ class DeliveryTests(unittest.TestCase):
                 self.assertEqual(host.resume(target), "superseded")
                 self.command.assert_not_called()
 
-    def test_queued_work_created_after_scan_prevents_dispatch(self):
+    def test_new_queue_entries_or_interactions_prevent_dispatch(self):
         target = self.target()
-        self.queue.append({"id": "user-message"})
-        self.assertEqual(host.resume(target), "superseded")
-        self.command.assert_not_called()
+        for field in ("queue", "interactions"):
+            with self.subTest(field=field):
+                self.queue, self.interactions = [], []
+                setattr(self, field, [{"id": "new-user-work"}])
+                self.assertEqual(host.resume(target), "superseded")
+                self.command.assert_not_called()
 
-    def test_new_request_with_identical_error_prevents_dispatch(self):
-        target = self.target()
-        self.events += [
-            {"seq": 4, "type": "client/turn/requested", "data": {"requestId": "request-2"}},
-            {**copy.deepcopy(self.events[-1]), "seq": 5},
-        ]
-        self.assertEqual(host.resume(target), "superseded")
-        self.command.assert_not_called()
-
-    def test_new_error_in_same_request_prevents_dispatch(self):
-        target = self.target()
-        self.events[-1]["seq"] += 1
-        self.assertEqual(host.resume(target), "superseded")
-        self.command.assert_not_called()
-
-    def test_completed_or_stopped_work_prevents_dispatch(self):
+    def test_new_work_or_errors_after_scan_prevent_dispatch(self):
         target = self.target()
         original = copy.deepcopy(self.events)
-        for event in (
+        variants = [[*original, event] for event in (
             {"type": "turn/completed", "data": {"status": "completed"}},
             {"type": "system/thread/interrupted", "data": {"reason": "user"}},
             {"type": "client/turn/requested", "data": {"requestId": "new"}},
-        ):
-            with self.subTest(event=event):
-                self.events = [*original, event]
+        )]
+        variants += [original + [{"seq": 4, "type": "client/turn/requested", "data": {"requestId": "request-2"}},
+                                 {**original[-1], "seq": 5}],
+                     original[:-1] + [{**original[-1], "seq": original[-1]["seq"] + 1}]]
+        for events in variants:
+            with self.subTest(events=events):
+                self.events = events
                 self.assertEqual(host.resume(target), "superseded")
                 self.command.assert_not_called()
 
@@ -200,12 +167,6 @@ class DeliveryTests(unittest.TestCase):
         with mock.patch.object(host, "bb_json", side_effect=host.BbUnavailable("closed")):
             self.assertEqual(host.resume(target), "not_sent")
         self.command.assert_not_called()
-
-    def test_missing_runtime_cannot_dispatch(self):
-        target = self.target()
-        self.command.side_effect = host.BbRuntimeError("bb could not be started")
-        self.assertEqual(host.resume(target), "not_sent")
-        self.command.assert_called_once()
 
     def test_invalid_request_identity_never_falls_back_to_tell(self):
         target = self.target()

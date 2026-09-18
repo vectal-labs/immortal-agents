@@ -40,20 +40,14 @@ def session_lines(last_message):
     return "\n".join(json.dumps(obj) for obj in (header, user, last_message)) + "\n"
 
 
-class EncodeCwdTests(unittest.TestCase):
-    def test_wraps_slashes_as_pi_folder_name(self):
-        self.assertIn("--Users-user-project--", detect_pi.encode_cwd(CWD))
-
-
 class PaneTests(unittest.TestCase):
-    def test_death_fingerprints_are_network_error(self):
-        self.assertEqual(detect_pi.classify_pane("Error: Retry failed after 3 attempts: Connection error."), "network_error")
-        self.assertEqual(detect_pi.classify_pane("Error: Connection error."), "network_error")
-        self.assertEqual(detect_pi.classify_pane("Error: fetch failed"), "network_error")
-
-    def test_retrying_is_not_dead_yet(self):
-        screen = "Error: Connection error.\nRetrying (1/3) in 2s... (esc to cancel)"
-        self.assertEqual(detect_pi.classify_pane(screen), "other")
+    def test_connection_failure_fingerprints_exclude_active_retries(self):
+        cases = [("Error: Retry failed after 3 attempts: Connection error.", "network_error"),
+                 ("Error: Connection error.", "network_error"), ("Error: fetch failed", "network_error"),
+                 ("Error: Connection error.\nRetrying (1/3) in 2s... (esc to cancel)", "other")]
+        for screen, expected in cases:
+            with self.subTest(screen=screen):
+                self.assertEqual(detect_pi.classify_pane(screen), expected)
 
     def test_pane_markers_identify_pi(self):
         self.assertTrue(detect_pi.is_pane("π - code"))
@@ -77,6 +71,7 @@ class EvaluateTests(unittest.TestCase):
         self.enterContext(mock.patch.object(detect_pi, "PI_SESSIONS", FIXTURES))
 
     def test_dead_session_inside_outage_resumes(self):
+        self.assertIn("--Users-user-project--", detect_pi.encode_cwd(CWD))
         self.assertTrue(DEAD_FILE.is_file())
         decision, reasons, info = detect_pi.evaluate(
             {"cwd": CWD}, "Error: Connection error.",
@@ -136,28 +131,18 @@ class SyntheticEvaluateTests(unittest.TestCase):
         self.assertEqual(decision, "skip")
         self.assertIn("already_resumed", reasons)
 
-    def test_aborted_skips(self):
-        decision, reasons, _ = self.eval_dead_pane({
-            "type": "message",
-            "id": "a1",
-            "parentId": "u1",
-            "timestamp": "2026-08-31T19:51:17.731Z",
-            "message": {"role": "assistant", "content": [], "stopReason": "aborted", "errorMessage": "Connection error."},
-        })
-        self.assertEqual(decision, "skip")
-        self.assertIn("aborted", reasons)
-
-    def test_402_and_429_skip(self):
-        for code in ("402 Payment Required", "429 Too Many Requests"):
-            decision, reasons, _ = self.eval_dead_pane({
-                "type": "message",
-                "id": "a1",
-                "parentId": "u1",
-                "timestamp": "2026-08-31T19:51:17.731Z",
-                "message": {"role": "assistant", "content": [], "stopReason": "error", "errorMessage": code},
-            })
-            self.assertEqual(decision, "skip", code)
-            self.assertIn("error_not_network", reasons)
+    def test_aborted_and_non_network_errors_are_left_alone(self):
+        cases = [("aborted", "Connection error.", "aborted"),
+                 ("error", "402 Payment Required", "error_not_network"),
+                 ("error", "429 Too Many Requests", "error_not_network")]
+        for stop, error, reason in cases:
+            with self.subTest(stop=stop, error=error):
+                decision, reasons, _ = self.eval_dead_pane({
+                    "type": "message", "id": "a1", "parentId": "u1", "timestamp": "2026-08-31T19:51:17.731Z",
+                    "message": {"role": "assistant", "content": [], "stopReason": stop, "errorMessage": error},
+                })
+                self.assertEqual(decision, "skip")
+                self.assertIn(reason, reasons)
 
 
 class WatcherHarnessTests(unittest.TestCase):

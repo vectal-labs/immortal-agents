@@ -1,10 +1,6 @@
-#!/usr/bin/env python3
-"""Tests for the cmux.json socketControlMode editor used by install.sh."""
-
-from __future__ import annotations
-
+"""Configuration updates preserve user settings and backups."""
 import json
-import os
+from pathlib import Path
 import re
 import tempfile
 import unittest
@@ -12,74 +8,51 @@ import unittest
 from immortal.core import cmux_config
 
 
-def strip_jsonc(text):
-    return re.sub(r"(^\s*//.*$)|(\s//[^\"]*$)", "", text, flags=re.M)
+class ConfigTests(unittest.TestCase):
+    def test_supported_config_shapes_preserve_existing_content(self):
+        cases = [
+            ("", {}, []),
+            ('{\n  // keep\n  "automation": {\n    "socketControlMode": "cmuxOnly", // trailing\n    "socketPassword": ""\n  }\n}\n', {}, ['// keep', '"socketPassword": ""']),
+            ('{\n  "schemaVersion": 1\n  //   "automation" : {\n  //     "socketControlMode" : "cmuxOnly",\n  //   }\n}\n', {"schemaVersion": 1}, ['//     "socketControlMode" : "cmuxOnly"']),
+            ('{\n  "automation": {\n    "socketPassword": "x"\n  }\n}\n', {}, ['"socketPassword": "x"']),
+            ('{\n  "automation": {\n  }\n}\n', {}, []),
+            ('{\n  "automation": {},\n  "schemaVersion": 1\n}\n', {"schemaVersion": 1}, []),
+            ('{\n  "schemaVersion": 1,\n  "sidebar": { "showWorkspaceDescription": false }\n}\n',
+             {"schemaVersion": 1, "sidebar": {"showWorkspaceDescription": False}}, []),
+        ]
+        for text, preserved, comments in cases:
+            with self.subTest(text=text):
+                output = cmux_config.patched(text)
+                self.assertIsNotNone(output)
+                data = json.loads(re.sub(r'(^\s*//.*$)|(\s//[^\"]*$)', '', output, flags=re.M))
+                self.assertEqual(data["automation"]["socketControlMode"], "automation")
+                self.assertEqual(cmux_config.file_mode(output), "automation")
+                for key, value in preserved.items():
+                    self.assertEqual(data[key], value)
+                for comment in comments:
+                    self.assertIn(comment, output)
 
-
-class PatchTests(unittest.TestCase):
-    def check(self, text, expect_changed=True):
-        out = cmux_config.patched(text)
-        if not expect_changed:
-            self.assertIsNone(out)
-            return None
-        self.assertIsNotNone(out)
-        data = json.loads(strip_jsonc(out))
-        self.assertEqual(data["automation"]["socketControlMode"], "automation")
-        self.assertEqual(cmux_config.file_mode(out), "automation")
-        return out
-
-    def test_missing_file(self):
-        self.check("")
-
-    def test_already_automation(self):
-        self.check('{\n  "automation": {\n    "socketControlMode": "automation"\n  }\n}\n', expect_changed=False)
-
-    def test_replaces_cmuxonly_in_place(self):
-        out = self.check('{\n  // keep\n  "automation": {\n    "socketControlMode": "cmuxOnly", // trailing\n    "socketPassword": ""\n  }\n}\n')
-        self.assertIn("// keep", out)
-        self.assertIn('"socketPassword": ""', out)
-
-    def test_ignores_commented_template(self):
-        text = '{\n  "schemaVersion": 1\n  //   "automation" : {\n  //     "socketControlMode" : "cmuxOnly",\n  //   }\n}\n'
-        out = self.check(text)
-        self.assertIn('//     "socketControlMode" : "cmuxOnly"', out)
-        self.assertEqual(json.loads(strip_jsonc(out))["schemaVersion"], 1)
-
-    def test_inserts_into_existing_block(self):
-        self.check('{\n  "automation": {\n    "socketPassword": "x"\n  }\n}\n')
-
-    def test_inserts_into_empty_multiline_block(self):
-        self.check('{\n  "automation": {\n  }\n}\n')
-
-    def test_replaces_empty_inline_block(self):
-        self.check('{\n  "automation": {},\n  "schemaVersion": 1\n}\n')
-
-    def test_adds_block_when_absent(self):
-        out = self.check('{\n  "schemaVersion": 1,\n  "sidebar": { "showWorkspaceDescription": false }\n}\n')
-        self.assertFalse(json.loads(strip_jsonc(out))["sidebar"]["showWorkspaceDescription"])
-
-    def test_file_mode_none_when_unmanaged(self):
+    def test_already_managed_and_commented_settings(self):
+        self.assertIsNone(cmux_config.patched('{\n  "automation": {\n    "socketControlMode": "automation"\n  }\n}\n'))
         self.assertIsNone(cmux_config.file_mode('{\n  // "socketControlMode": "automation"\n}\n'))
 
-
-class EnsureTests(unittest.TestCase):
-    def test_ensure_writes_backup_then_file(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            path = os.path.join(tmp, "cmux.json")
-            with open(path, "w") as fh:
-                fh.write('{\n  "automation": { "socketControlMode": "cmuxOnly" }\n}\n')
-            self.assertEqual(cmux_config.ensure(path), "written")
-            self.assertEqual(cmux_config.ensure(path), "unchanged")
-            baks = [f for f in os.listdir(tmp) if f.endswith(".bak")]
-            self.assertEqual(len(baks), 1)
-            self.assertIn("cmuxOnly", open(os.path.join(tmp, baks[0])).read())
-
-    def test_ensure_creates_file_without_backup(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            path = os.path.join(tmp, "sub", "cmux.json")
-            self.assertEqual(cmux_config.ensure(path), "written")
-            self.assertEqual(os.listdir(os.path.join(tmp, "sub")), ["cmux.json"])
-            self.assertEqual(cmux_config.file_mode(open(path).read()), "automation")
+    def test_ensure_is_idempotent_and_backs_up_only_existing_files(self):
+        for existing in (False, True):
+            with self.subTest(existing=existing), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "sub/cmux.json"
+                original = '{\n  "automation": { "socketControlMode": "cmuxOnly" }\n}\n'
+                if existing:
+                    path.parent.mkdir()
+                    path.write_text(original)
+                self.assertEqual(cmux_config.ensure(str(path)), "written")
+                self.assertEqual(cmux_config.ensure(str(path)), "unchanged")
+                self.assertEqual(cmux_config.file_mode(path.read_text()), "automation")
+                backups = list(path.parent.glob("*.bak"))
+                self.assertEqual(len(backups), int(existing))
+                if existing:
+                    self.assertEqual(backups[0].read_text(), original)
+                else:
+                    self.assertEqual(list(path.parent.iterdir()), [path])
 
 
 if __name__ == "__main__":

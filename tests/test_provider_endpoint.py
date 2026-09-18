@@ -32,12 +32,12 @@ class ProviderEndpointTests(unittest.TestCase):
         self.events.append({"type": "provider.env-resolved", "data": {
             "entries": [{"name": k, "value": v} for k, v in values.items()]}})
 
-    def test_subscription_uses_chatgpt(self):
-        self.assertEqual(self.resolve(), "https://chatgpt.com/backend-api/codex/responses")
-
-    def test_api_auth_uses_openai_api(self):
-        (self.home / "auth.json").write_text('{"auth_mode":"apikey"}')
-        self.assertEqual(self.resolve(), "https://api.openai.com/v1/responses")
+    def test_auth_selects_the_route_without_using_watcher_environment(self):
+        for mode, expected in (("chatgpt", "https://chatgpt.com/backend-api/codex/responses"),
+                               ("apikey", "https://api.openai.com/v1/responses")):
+            with self.subTest(mode=mode), patch.dict("os.environ", {"OPENAI_BASE_URL": "https://wrong.example/v1"}):
+                (self.home / "auth.json").write_text(json.dumps({"auth_mode": mode}))
+                self.assertEqual(self.resolve(), expected)
 
     def test_configured_custom_route(self):
         with closing(sqlite3.connect(self.home / "state_5.sqlite")) as db:
@@ -53,22 +53,24 @@ class ProviderEndpointTests(unittest.TestCase):
         self.env(OPENAI_BASE_URL="https://new.example/v2")
         self.assertEqual(self.resolve(), "https://new.example/v2/responses")
 
-    def test_does_not_use_watcher_environment(self):
-        with patch.dict("os.environ", {"OPENAI_BASE_URL": "https://wrong.example/v1"}):
-            self.assertEqual(self.resolve(), "https://chatgpt.com/backend-api/codex/responses")
+    def test_new_identity_requires_its_own_evidence(self):
+        for kind in ("thread/identity", "provider/error"):
+            with self.subTest(kind=kind):
+                self.events = [self.events[0], {"type": kind, "data": {"providerThreadId": "missing"}}]
+                self.assertIsNone(self.resolve())
 
-    def test_new_identity_must_have_own_evidence(self):
-        self.events.append({"type": "thread/identity", "data": {"providerThreadId": "missing"}})
-        self.assertIsNone(self.resolve())
-
-    def test_latest_runtime_identity_overrides_original_identity(self):
-        self.events.append({"type": "provider/error", "data": {"providerThreadId": "missing"}})
-        self.assertIsNone(self.resolve())
-
-    def test_already_complete_endpoint_is_not_duplicated(self):
-        (self.home / "config.toml").write_text(
-            'chatgpt_base_url="https://chatgpt.example/backend-api/codex/responses"')
-        self.assertEqual(self.resolve(), "https://chatgpt.example/backend-api/codex/responses")
+    def test_explicit_configuration_routes(self):
+        cases = [
+            ('chatgpt_base_url="https://chatgpt.example/backend-api/codex/responses"',
+             "https://chatgpt.example/backend-api/codex/responses"),
+            ('[model_providers.openai]\nbase_url="http://127.0.0.1:54321/v1"',
+             "http://127.0.0.1:54321/v1/responses"),
+            ('model_provider="gateway"', None),
+        ]
+        for config, expected in cases:
+            with self.subTest(config=config):
+                (self.home / "config.toml").write_text(config)
+                self.assertEqual(self.resolve(), expected)
 
     def test_project_config_stays_unknown(self):
         (self.cwd / ".codex").mkdir()
@@ -79,15 +81,6 @@ class ProviderEndpointTests(unittest.TestCase):
         (self.home / "config.toml").write_text('model_provider="openai"')
         with patch("immortal.core.provider_endpoint.tomllib", None):
             self.assertIsNone(self.resolve())
-
-    def test_explicit_loopback_route(self):
-        (self.home / "config.toml").write_text(
-            '[model_providers.openai]\nbase_url="http://127.0.0.1:54321/v1"')
-        self.assertEqual(self.resolve(), "http://127.0.0.1:54321/v1/responses")
-
-    def test_changed_provider_configuration_stays_unknown(self):
-        (self.home / "config.toml").write_text('model_provider="gateway"')
-        self.assertIsNone(self.resolve())
 
     def test_claude_requires_explicit_endpoint(self):
         self.assertIsNone(self.resolve("claude-code"))

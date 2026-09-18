@@ -384,18 +384,21 @@ class SubmissionRegressionTests(unittest.TestCase):
 
 
 class ErrorParsingTests(unittest.TestCase):
-    def test_real_failure_has_request_identity_and_timestamp(self):
-        error = host.last_error(EVENTS, "codex")
-        self.assertEqual(error["at"], ERROR_AT)
-        self.assertEqual(error["submission"]["request_id"], REQUEST)
-        self.assertEqual(error["submission"]["original_request_id"], REQUEST)
+    def test_failure_and_retry_preserve_request_identity_and_timestamp(self):
+        for attempt, request in ((1, REQUEST), (2, "retry")):
+            with self.subTest(attempt=attempt):
+                events = copy.deepcopy(EVENTS)
+                if attempt > 1:
+                    events[0]["data"].update(requestId=request, retryOfRequestId=REQUEST, retryAttempt=attempt)
+                    events[-2]["data"]["requestId"] = request
+                error = host.last_error(events, "codex")
+                self.assertEqual(error["at"], ERROR_AT)
+                self.assertEqual(error["submission"], {"request_id": request, "original_request_id": REQUEST,
+                                                       "attempt": attempt, "error_seq": 260})
 
-    def test_new_request_clears_old_failure(self):
-        later = {"type": "client/turn/requested", "data": {"requestId": "new"}}
-        self.assertIsNone(host.last_error(EVENTS + [later], "codex"))
-
-    def test_started_completed_or_interrupted_turn_clears_old_failure(self):
-        for event in ({"type": "turn/started"},
+    def test_new_request_or_turn_completion_clears_old_failure(self):
+        for event in ({"type": "client/turn/requested", "data": {"requestId": "new"}},
+                      {"type": "turn/started"},
                       {"type": "turn/input/accepted", "data": {"clientRequestId": REQUEST}},
                       {"type": "turn/completed", "data": {"status": "completed"}},
                       {"type": "turn/completed", "data": {"status": "interrupted"}}):
@@ -406,21 +409,12 @@ class ErrorParsingTests(unittest.TestCase):
         event = {"type": "turn/input/accepted", "data": {"clientRequestId": "earlier-request"}}
         self.assertEqual(host.last_error(EVENTS + [event], "codex")["submission"]["request_id"], REQUEST)
 
-    def test_rejection_must_belong_to_current_request(self):
-        events = copy.deepcopy(EVENTS)
-        events[-2]["data"]["requestId"] = "another-request"
-        self.assertIsNone(host.last_error(events, "codex"))
-
-    def test_unrelated_system_error_is_not_a_submission(self):
-        self.assertIsNone(host.last_error([EVENTS[0], EVENTS[-1]], "codex"))
-
-    def test_retry_retains_original_identity(self):
-        events = copy.deepcopy(EVENTS)
-        events[0]["data"].update(requestId="retry", retryOfRequestId=REQUEST, retryAttempt=2)
-        events[-2]["data"]["requestId"] = "retry"
-        error = host.last_error(events, "codex")
-        self.assertEqual(error["submission"], {
-            "request_id": "retry", "original_request_id": REQUEST, "attempt": 2, "error_seq": 260})
+    def test_unrelated_rejection_or_system_error_is_not_a_submission(self):
+        mismatched = copy.deepcopy(EVENTS)
+        mismatched[-2]["data"]["requestId"] = "another-request"
+        for events in (mismatched, [EVENTS[0], EVENTS[-1]]):
+            with self.subTest(events=events):
+                self.assertIsNone(host.last_error(events, "codex"))
 
 
 class RecoveryPolicyTests(unittest.TestCase):
@@ -448,11 +442,21 @@ class RecoveryPolicyTests(unittest.TestCase):
         self.target["submission"].update(request_id=f"retry-{attempt}", attempt=attempt, error_seq=260 + attempt)
         self.target["error_at"] = (ERROR_AT + timedelta(seconds=seconds)).isoformat()
 
-    def test_waits_thirty_seconds_then_retries(self):
-        self.assertEqual(self.run_at(29), 0)
-        self.retry.assert_not_called()
-        self.assertEqual(self.run_at(30), 1)
-        self.retry.assert_called_once_with(self.target, reset=False)
+    def test_submission_timeouts_wait_then_reserve_before_retrying(self):
+        def inspect(target, reset):
+            entry = next(iter(logbook.load_state()["revived"].values()))
+            self.assertEqual(entry["tries"], 1)
+            self.assertEqual(entry["delivery"], "unknown")
+            return "sent"
+        self.retry.side_effect = inspect
+        for detail in bb_recovery.TIMEOUTS:
+            with self.subTest(detail=detail):
+                self.state = {"revived": {}}
+                self.retry.reset_mock()
+                self.assertEqual(self.run_at(29, detail), 0)
+                self.retry.assert_not_called()
+                self.assertEqual(self.run_at(30, detail), 1)
+                self.retry.assert_called_once_with(self.target, reset=False)
 
     def test_submission_retry_then_matching_output_saves_success_alert(self):
         sent = ERROR_AT + timedelta(seconds=30)
@@ -478,8 +482,9 @@ class RecoveryPolicyTests(unittest.TestCase):
         self.assertEqual(len(saved['discord_outbox']), 1)
         self.assertIn('Recovery confirmed: Codex in bb · "test"', next(iter(saved['discord_outbox'].values()))['text'])
 
-    def test_three_attempts_backoff_reset_once_then_one_alert(self):
+    def test_three_attempt_backoff_survives_restart_resets_once_and_alerts_once(self):
         self.run_at(30)
+        self.state = logbook.load_state()
         self.next_failure(2, 40)
         self.run_at(99)
         self.assertEqual(self.retry.call_count, 1)
@@ -497,24 +502,6 @@ class RecoveryPolicyTests(unittest.TestCase):
         self.alert.assert_called_once()
         self.assertEqual(self.alert.call_args.kwargs["detail"], "submission_retries_exhausted")
 
-    def test_budget_and_backoff_survive_watcher_restart(self):
-        self.run_at(30)
-        self.state = logbook.load_state()
-        self.next_failure(2, 40)
-        self.run_at(99)
-        self.assertEqual(self.retry.call_count, 1)
-        self.run_at(100)
-        self.assertEqual(self.retry.call_count, 2)
-
-    def test_reserves_budget_before_dispatch(self):
-        def inspect(target, reset):
-            entry = next(iter(logbook.load_state()["revived"].values()))
-            self.assertEqual(entry["tries"], 1)
-            self.assertEqual(entry["delivery"], "unknown")
-            return "sent"
-        self.retry.side_effect = inspect
-        self.run_at(30)
-
     def test_missing_reply_never_blindly_resends_same_failed_request(self):
         self.retry.return_value = "unknown"
         self.run_at(30)
@@ -530,15 +517,12 @@ class RecoveryPolicyTests(unittest.TestCase):
         self.run_at(100)
         self.retry.assert_called_once()
 
-    def test_busy_newer_or_queued_work_is_left_alone(self):
-        self.ready.return_value = False
-        self.run_at(30)
-        self.retry.assert_not_called()
-
-    def test_failed_status_read_defers_recovery(self):
-        self.ready.side_effect = host.BbUnavailable("offline")
-        self.run_at(30)
-        self.retry.assert_not_called()
+    def test_unready_or_unreadable_threads_are_left_alone(self):
+        for readiness in (False, host.BbUnavailable("offline")):
+            with self.subTest(readiness=readiness):
+                self.ready.side_effect = [readiness]
+                self.run_at(30)
+                self.retry.assert_not_called()
 
     def test_permanent_and_unknown_errors_alert_without_retry(self):
         for detail in ("Not logged in", "Invalid model", "codex app-server exited", "permission denied"):
@@ -554,10 +538,6 @@ class RecoveryPolicyTests(unittest.TestCase):
         self.run_at(bb_recovery.MAX_AGE_SECS + 1)
         self.retry.assert_not_called()
 
-    def test_turn_start_timeout_is_also_recoverable(self):
-        self.run_at(30, bb_recovery.TIMEOUTS[1])
-        self.retry.assert_called_once()
-
 
 class RetryCommandTests(unittest.TestCase):
     def setUp(self):
@@ -565,24 +545,17 @@ class RetryCommandTests(unittest.TestCase):
         error = host.last_error(EVENTS, "codex")
         self.target = {"ref": REF, "submission": error["submission"], "harness_hint": "codex"}
 
-    def test_stale_request_before_reset_is_never_stopped(self):
-        with mock.patch.object(host, "submission_ready", return_value=False), \
-                mock.patch.object(host, "run_bb") as command:
-            self.assertEqual(host.retry_submission(self.target, reset=True), "superseded")
-        command.assert_not_called()
-
-    def test_rechecks_request_after_reset(self):
-        with mock.patch.object(host, "submission_ready", side_effect=[True, False]), \
-                mock.patch.object(host, "run_bb", return_value=mock.Mock(returncode=0)) as command:
-            self.assertEqual(host.retry_submission(self.target, reset=True), "superseded")
-        self.assertEqual(command.call_count, 1)
-        self.assertEqual(command.call_args.args[0], ["thread", "stop", REF, "--json"])
-
-    def test_failed_reset_does_not_send_input(self):
-        with mock.patch.object(host, "submission_ready", return_value=True), \
-                mock.patch.object(host, "run_bb", return_value=mock.Mock(returncode=1)) as command:
-            self.assertEqual(host.retry_submission(self.target, reset=True), "reset_failed")
-        self.assertEqual(command.call_count, 1)
+    def test_reset_requires_matching_request_before_and_after_stopping(self):
+        cases = [([False], 0, "superseded", 0), ([True, False], 0, "superseded", 1),
+                 ([True], 1, "reset_failed", 1)]
+        for readiness, code, expected, stops in cases:
+            with self.subTest(readiness=readiness, code=code), \
+                    mock.patch.object(host, "submission_ready", side_effect=readiness), \
+                    mock.patch.object(host, "run_bb", return_value=mock.Mock(returncode=code)) as command:
+                self.assertEqual(host.retry_submission(self.target, reset=True), expected)
+                self.assertEqual(command.call_count, stops)
+                if stops:
+                    self.assertEqual(command.call_args.args[0], ["thread", "stop", REF, "--json"])
 
     def test_cli_timeout_is_ambiguous_not_success(self):
         with mock.patch.object(host, "submission_ready", return_value=True), \

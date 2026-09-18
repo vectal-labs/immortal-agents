@@ -13,29 +13,17 @@ from immortal.core import notify
 
 
 class MessageTests(unittest.TestCase):
-    def test_revive_message_is_one_short_line(self):
-        text = notify.revive_message("bb", "claude-code", 735, "Write Essay", True)
-        self.assertEqual(text, 'Resume sent: Claude Code in bb · offline 12m 15s · "Write Essay"')
-
-    def test_failed_revive_is_labelled(self):
-        text = notify.revive_message("cmux", "codex", 3700, None, False)
-        self.assertEqual(text, "Revive FAILED: Codex in cmux · offline 1h 1m")
-
-    def test_unknown_submission_is_not_reported_as_failure(self):
-        text = notify.revive_message("bb", "codex", 0, None, None)
-        self.assertEqual(text, "Resume status unknown: Codex in bb · offline 0s")
-
-    def test_unhandled_provider_error_keeps_its_message(self):
-        text = notify.revive_message(
-            "bb", "codex", 0, None, None, "at capacity", "unhandled_provider_error"
-        )
-        self.assertEqual(text, "Unhandled provider error: Codex in bb · at capacity")
-
-    def test_provider_revive_includes_trigger_and_detail(self):
-        text = notify.revive_message(
-            "bb", "pi", 0, "Essay", True, "at capacity", "provider_outage"
-        )
-        self.assertEqual(text, 'Resume sent: Pi in bb · provider outage · "Essay" · at capacity')
+    def test_messages_distinguish_delivery_status_and_error_trigger(self):
+        cases = [
+            (("bb", "claude-code", 735, "Write Essay", True), 'Resume sent: Claude Code in bb · offline 12m 15s · "Write Essay"'),
+            (("cmux", "codex", 3700, None, False), "Revive FAILED: Codex in cmux · offline 1h 1m"),
+            (("bb", "codex", 0, None, None), "Resume status unknown: Codex in bb · offline 0s"),
+            (("bb", "codex", 0, None, None, "at capacity", "unhandled_provider_error"), "Unhandled provider error: Codex in bb · at capacity"),
+            (("bb", "pi", 0, "Essay", True, "at capacity", "provider_outage"), 'Resume sent: Pi in bb · provider outage · "Essay" · at capacity'),
+        ]
+        for args, expected in cases:
+            with self.subTest(args=args):
+                self.assertEqual(notify.revive_message(*args), expected)
 
     def test_no_webhook_is_a_silent_noop(self):
         with mock.patch.object(notify, "webhook_url", return_value=None), mock.patch(
