@@ -63,9 +63,10 @@ is enabled. Telemetry excludes session paths, thread IDs, prompts, and output te
 
 ## Reconnect steering (ADR 0052)
 
-After every reconnect, and after the Mac wakes, the watcher steers one `keep going`
-into each BB thread that was still active at that moment. No error and no minimum
-outage is required; the ordinary failed-thread recovery above is unchanged and runs first.
+After every reconnect, and after the Mac wakes, the watcher considers one `keep going`
+for each BB thread active at that moment. It waits 30 seconds after provider readiness
+and cancels the nudge if the agent has resumed. No error or minimum outage is required;
+the ordinary failed-thread recovery above is unchanged and runs first.
 
 An episode opens on an offline-to-online probe or when wall time outruns
 `time.monotonic()` by more than five seconds (the Mac slept; a slow scan never
@@ -77,12 +78,19 @@ recovery since that tick's probe (older unconfirmed attempts do not count). Work
 started later is not part of that reconnect. If BB cannot answer
 yet, the snapshot is retried on later ticks instead of freezing an empty set.
 
-Each candidate is sent once its provider answers: known routes use the same
-unauthenticated endpoint probe as recovery, unknown routes use the DNS readiness
-check. Cached results from before the outage are discarded when the episode opens.
-Nothing is sent while the Apple probe is offline. Right before the send the thread
-is re-read; a finished thread or a pending interaction (`bb thread interactions
-list`, since `thread show` omits `hasPendingInteraction`) cancels its nudge.
+Each candidate gets a persisted 30-second grace period once its provider answers:
+known routes use the endpoint probe; unknown routes use DNS readiness. Observed
+loss of readiness resets that wait. Cached results from before the outage are discarded.
+Nothing is sent while the Apple probe is offline.
+
+Right before sending, the adapter re-reads status, interactions, queues, and history.
+Current-turn text, reasoning, or tool activity since the reconnect tick cancels that
+episode's nudge permanently, including progress during a readiness delay. Empty output,
+usage counters, input acceptance, and other turns do not count. Unfinished commands
+are conservatively left alone: BB's timeline cannot prove process liveness, so a stale
+command record can also suppress a nudge. Missing turn identity or unreadable progress
+defers sending. User input since 60 seconds before the reconnect, finished threads,
+and pending questions or approvals also cancel the nudge.
 `bb thread tell --mode auto --json` reports `sent` or `queued`.
 
 The episode, its candidates, and each reservation are saved in `state.json` before
@@ -93,12 +101,13 @@ acceptance alone is not handling. Ended, rejected, or superseded requests stop
 blocking. Unreadable history is retried later; an ambiguous send stays pending.
 Skipped nudges are discarded for that episode, not delayed until the cooldown ends.
 Episodes expire after 15 minutes. Logs: `steer_episode` (opened, snapshot, merged,
-expired), `steer_sent`, and `steer_skipped` (`cooldown` or `pending`). Steers are not
-confirmed or announced on Discord.
+expired), `steer_sent`, and `steer_skipped` (`cooldown`, `pending`, `recent_user_message`,
+or `agent_progress`). Steers are not confirmed or announced on Discord.
 
 Limits: threads on other machines are never steered; unknown routes wait for both
 `api.anthropic.com` and `api.openai.com` to resolve; a wake is only seen while the
-watcher process survives it (a restart is not a wake).
+watcher process survives it (a restart is not a wake). The final history read and
+send are not atomic; activity arriving between them can still race a nudge.
 
 ## Unhandled provider error alerts
 

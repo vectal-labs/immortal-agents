@@ -26,7 +26,7 @@ def thread(thread_id, status="active", provider="claude-code", host=HOST, **extr
     return row
 
 
-class ReconnectSteerTests(unittest.TestCase):
+class ReconnectSteerCase(unittest.TestCase):
     def setUp(self):
         self.root = isolate_state(self)
         (self.root / "host-id").write_text(HOST + "\n")
@@ -49,6 +49,7 @@ class ReconnectSteerTests(unittest.TestCase):
         self.events = {}
         self.queues = {}
         self.now = datetime.now(timezone.utc)
+        self.turn_started_at = (self.now - timedelta(minutes=5)).timestamp() * 1000
         for module in (watcher, revive, steering, common):
             clock = self.enterContext(mock.patch.object(module, "datetime", wraps=datetime))
             clock.now.side_effect = lambda *args: self.now
@@ -71,7 +72,8 @@ class ReconnectSteerTests(unittest.TestCase):
         if args[:3] == ["thread", "queue", "list"]:
             return self.queues.get(args[3], [])
         if args[:2] == ["thread", "log"]:
-            return self.events.get(args[2], [])
+            return [{"seq": 0, "createdAt": self.turn_started_at, "type": "turn/started",
+                     "scope": {"turnId": "turn-1"}, "data": {}}] + self.events.get(args[2], [])
         self.fail(f"Unexpected BB read: {args}")
 
     def event(self, kind, data, ref="worker", turn="turn-1"):
@@ -110,24 +112,34 @@ class ReconnectSteerTests(unittest.TestCase):
         self.probe.return_value = online
         watcher.loop()
 
-    def reconnect(self, outage_secs=60):
+    def reconnect(self, outage_secs=60, wait=True):
         # Real reconnects have distinct timestamps, even with our frozen clock.
         if self.state.get("last_recovery_at") == now_iso(self.now):
             self.advance(0.001)
         self.tick(online=False)
         self.state["outage_started_at"] = now_iso(self.now - timedelta(seconds=outage_secs))
         self.tick(online=True)
+        if wait:
+            self.settle()
 
-    def wake(self, seconds=1200):
+    def wake(self, seconds=1200, wait=True):
         self.tick()
         self.state["steer"]["last_tick_at"] = now_iso(self.now - timedelta(seconds=seconds))
         self.tick()
+        if wait:
+            self.settle()
 
     def episode(self):
         return self.state["steer"]["episode"]
 
+    def settle(self):
+        self.advance(30)
+        self.tick()
+
+
+class ReconnectSteerTests(ReconnectSteerCase):
     # Reproduction: before ADR 0052 nothing reached an active thread here.
-    def test_short_outage_steers_active_thread_immediately(self):
+    def test_short_outage_steers_active_thread_after_grace(self):
         self.reconnect(60)
         self.assertEqual(self.tells(), [tell("worker")])
         self.assertFalse(self.state.get("pending_recovery"))  # below MIN_OUTAGE_SECS
@@ -207,6 +219,8 @@ class ReconnectSteerTests(unittest.TestCase):
         self.assertEqual(self.tells(), [])
         self.dns.return_value = True
         self.tick()
+        self.assertEqual(self.tells(), [])
+        self.settle()
         self.tick()
         self.assertEqual(self.tells(), [tell("worker")])
 
@@ -221,6 +235,8 @@ class ReconnectSteerTests(unittest.TestCase):
         self.connection.return_value = "unreachable"
         self.dns.return_value = True
         self.tick()
+        self.assertEqual(self.tells(), [tell("codex")])
+        self.settle()
         self.assertEqual(self.tells(), [tell("codex"), tell("worker")])
         self.assertEqual(self.endpoint.call_args.args[0]["environment_host_id"], HOST)
 
@@ -247,6 +263,8 @@ class ReconnectSteerTests(unittest.TestCase):
         self.assertEqual(self.tells(), [])
         self.state["outage_started_at"] = now_iso(self.now)
         self.tick(online=True)
+        self.assertEqual(self.tells(), [])
+        self.settle()
         self.assertEqual(self.tells(), [tell("worker")])
 
     def test_candidates_are_frozen_at_the_reconnect(self):
@@ -255,6 +273,7 @@ class ReconnectSteerTests(unittest.TestCase):
         self.threads.append(thread("new-work"))
         self.dns.return_value = True
         self.tick()
+        self.settle()
         self.assertEqual(self.tells(), [tell("worker")])
 
     def test_user_message_before_reconnect_cancels_mistimed_nudge(self):
@@ -266,11 +285,13 @@ class ReconnectSteerTests(unittest.TestCase):
         self.user_message()
         self.advance(6.330343)
         self.dns.return_value = False
-        self.reconnect(532.64)
+        self.reconnect(532.64, wait=False)
         self.advance(15.537657)
         self.event("item/started", {"item": {"type": "commandExecution"}})
         self.dns.return_value = True
         self.tick()
+        self.assertEqual(self.tells(), [])
+        self.settle()
         self.assertEqual(self.tells(), [])
         self.assertEqual(self.episode()["sent"]["worker"]["delivery"], "superseded")
         self.assertNotIn("worker", self.state["steer"]["last_sent"])
@@ -306,6 +327,7 @@ class ReconnectSteerTests(unittest.TestCase):
         steering._last_mono = None
         self.dns.return_value = True
         self.tick()
+        self.settle()
         self.assertEqual(self.tells(), [])
         self.assertEqual(self.episode()["sent"]["worker"]["delivery"], "superseded")
 
@@ -347,13 +369,15 @@ class ReconnectSteerTests(unittest.TestCase):
         self.user_message()
         self.advance(59)
         self.dns.return_value = False
-        self.wake(seconds=12)
+        self.wake(seconds=12, wait=False)
         self.advance(50)
-        self.reconnect(5)
+        self.reconnect(5, wait=False)
         self.dns.return_value = True
         self.tick()
+        self.settle()
         self.assertEqual(self.episode()["reasons"], ["wake", "reconnect"])
         self.assertEqual(self.tells(), [])
+        self.assertEqual(self.episode()["sent"]["worker"]["delivery"], "superseded")
 
     def test_system_and_other_agent_messages_do_not_block(self):
         self.user_message(initiator="system")
@@ -410,6 +434,7 @@ class ReconnectSteerTests(unittest.TestCase):
                                         "payload": {"kind": "user_question"}}]
         self.dns.return_value = True
         self.tick()
+        self.settle()
         self.tick()
         self.assertEqual(self.tells(), [])
         self.assertEqual(self.episode()["sent"]["worker"]["delivery"], "superseded")
@@ -475,7 +500,7 @@ class ReconnectSteerTests(unittest.TestCase):
         # 45s then 132s apart, with no assistant output between them.
         self.reconnect(60)
         self.advance(45)
-        self.wake(seconds=12)
+        self.wake(seconds=12, wait=False)
         self.advance(132)
         self.wake(seconds=12)
         self.assertEqual(self.tells(), [tell("worker")])
@@ -487,10 +512,13 @@ class ReconnectSteerTests(unittest.TestCase):
         self.state = logbook.load_state()
         steering._last_mono = None
         self.advance(118)
-        self.reconnect(5)
+        self.reconnect(5, wait=False)
         self.assertEqual(self.tells(), [tell("worker")])
+        self.assertEqual(self.episode()["sent"]["worker"]["delivery"], "cooldown")
         self.advance(1)
-        self.reconnect(5)
+        self.reconnect(5, wait=False)
+        self.assertNotIn("worker", self.episode()["sent"])
+        self.settle()
         self.assertEqual(self.tells(), [tell("worker"), tell("worker")])
 
     def test_wake_gap_and_the_reconnect_after_it_are_one_episode(self):
@@ -503,6 +531,7 @@ class ReconnectSteerTests(unittest.TestCase):
         self.assertEqual(self.episode()["reasons"], ["reconnect"])
         self.advance(120)
         self.progress()
+        self.advance(0.001)  # Progress belongs to the previous connection, not the new one.
         self.reconnect(5)
         self.assertEqual(self.tells(), [tell("worker"), tell("worker")])
 
@@ -524,7 +553,7 @@ class ReconnectSteerTests(unittest.TestCase):
         bb.bb_json.side_effect = self.read_bb
         self.tick()
         self.threads.append(thread("new-work"))  # after the snapshot: not this reconnect's work
-        self.tick()
+        self.settle()
         self.assertEqual(self.tells(), [tell("worker")])
         self.assertEqual(sorted(self.episode()["candidates"]), ["worker"])
 
@@ -532,6 +561,7 @@ class ReconnectSteerTests(unittest.TestCase):
         self.reconnect(60)
         self.advance(120)
         self.progress()
+        self.advance(0.001)
         self.reconnect(30)
         self.assertEqual(self.tells(), [tell("worker"), tell("worker")])
 
@@ -638,10 +668,13 @@ class ReconnectSteerTests(unittest.TestCase):
         self.advance(1)
         self.progress()
         self.advance(118)
-        self.reconnect(5)
+        self.reconnect(5, wait=False)
         self.assertEqual(self.tells(), [tell("worker")])
+        self.assertEqual(self.episode()["sent"]["worker"]["delivery"], "cooldown")
         self.advance(1)
-        self.reconnect(5)
+        self.reconnect(5, wait=False)
+        self.assertNotIn("worker", self.episode()["sent"])
+        self.settle()
         self.assertEqual(self.tells(), [tell("worker"), tell("worker")])
 
     def test_failed_reservation_does_not_leave_a_phantom_pending_send(self):
@@ -682,6 +715,219 @@ class ReconnectSteerTests(unittest.TestCase):
         self.tick()
         self.assertEqual(self.tells(), [tell("worker"), tell("worker")])
         self.assertEqual(self.episode()["sent"]["worker"]["delivery"], "sent")
+
+
+class ReconnectProgressTests(ReconnectSteerCase):
+    def reconnect(self, outage_secs=60):
+        super().reconnect(outage_secs, wait=False)
+
+    def test_quiet_thread_gets_one_nudge_after_30_seconds(self):
+        self.reconnect(5)
+        self.assertEqual(self.tells(), [])
+        self.advance(29)
+        self.tick()
+        self.assertEqual(self.tells(), [])
+        self.advance(1)
+        self.tick()
+        self.assertEqual(self.tells(), [tell("worker")])
+        self.settle()
+        self.assertEqual(self.tells(), [tell("worker")])
+
+    def test_grace_starts_when_provider_is_ready_and_survives_restart(self):
+        self.dns.return_value = False
+        self.reconnect(5)
+        self.advance(120)
+        self.dns.return_value = True
+        self.tick()
+        self.assertEqual(self.tells(), [])
+        self.advance(29)
+        self.state = logbook.load_state()
+        steering._last_mono = None
+        self.tick()
+        self.assertEqual(self.tells(), [])
+        self.advance(1)
+        self.tick()
+        self.assertEqual(self.tells(), [tell("worker")])
+
+    def test_online_wake_waits_and_cancels_for_progress(self):
+        self.wake(seconds=12, wait=False)
+        self.assertEqual(self.tells(), [])
+        self.advance(10)
+        self.event("item/reasoning/textDelta", {"delta": "Thinking"})
+        self.settle()
+        self.assertEqual(self.tells(), [])
+        self.assertEqual(self.episode()["sent"]["worker"]["delivery"], "superseded")
+
+    def test_offline_wake_merge_resets_grace_without_losing_progress(self):
+        self.wake(seconds=12, wait=False)
+        self.advance(5)
+        self.progress()
+        self.tick(online=False)
+        self.state = logbook.load_state()
+        self.assertNotIn("ready_at", self.episode()["candidates"]["worker"])
+        self.advance(5)
+        self.tick()
+        self.assertEqual(self.episode()["reasons"], ["wake", "reconnect"])
+        self.settle()
+        self.assertEqual(self.tells(), [])
+        self.assertEqual(self.episode()["sent"]["worker"]["delivery"], "superseded")
+
+    def test_upgrade_of_existing_episode_waits_before_sending(self):
+        self.reconnect(5)
+        self.episode()["candidates"]["worker"].pop("ready_at", None)
+        logbook.save_state(self.state)
+        self.state = logbook.load_state()
+        steering._last_mono = None
+        self.advance(120)
+        self.tick()
+        self.assertEqual(self.tells(), [])
+        self.settle()
+        self.assertEqual(self.tells(), [tell("worker")])
+
+    def test_provider_loss_resets_grace(self):
+        self.reconnect(5)
+        self.advance(20)
+        self.dns.return_value = False
+        self.tick()
+        self.advance(20)
+        self.dns.return_value = True
+        self.tick()
+        self.advance(29)
+        self.tick()
+        self.assertEqual(self.tells(), [])
+        self.advance(1)
+        self.tick()
+        self.assertEqual(self.tells(), [tell("worker")])
+
+    def test_progress_cancels_episode_even_after_restart_and_long_silence(self):
+        self.reconnect(5)
+        self.advance(5)
+        self.progress()
+        self.settle()
+        self.assertEqual(self.tells(), [])
+        self.assertEqual(self.episode()["sent"]["worker"]["delivery"], "superseded")
+        self.assertNotIn("worker", self.state["steer"]["last_sent"])
+        self.state = logbook.load_state()
+        steering._last_mono = None
+        self.advance(300)
+        self.tick()
+        self.assertEqual(self.tells(), [])
+
+    def test_progress_during_readiness_wait_still_cancels_nudge(self):
+        self.dns.return_value = False
+        self.reconnect(5)
+        self.advance(5)
+        self.progress()
+        self.advance(120)
+        self.dns.return_value = True
+        self.tick()
+        self.settle()
+        self.assertEqual(self.tells(), [])
+
+    def test_text_reasoning_and_tool_events_cancel_only_their_threads(self):
+        events = [
+            ("item/agentMessage/delta", {"delta": "Working"}),
+            ("item/reasoning/textDelta", {"delta": "Thinking"}),
+            ("item/reasoning/summaryTextDelta", {"delta": "Thinking"}),
+            ("item/commandExecution/outputDelta", {"delta": "Still running"}),
+            ("item/fileChange/outputDelta", {"delta": "Patched"}),
+            ("item/plan/delta", {"delta": "Next step"}),
+            ("item/toolCall/progress", {}),
+            ("item/mcpToolCall/progress", {}),
+            ("item/started", {"item": {"type": "commandExecution", "id": "cmd", "status": "pending"}}),
+            ("item/completed", {"item": {"type": "toolCall", "id": "tool", "status": "completed"}}),
+            ("item/completed", {"item": {"type": "reasoning", "summary": ["Thought"], "content": []}}),
+            ("item/completed", {"item": {"type": "agentMessage", "text": "Working"}}),
+        ]
+        events += [("item/started", {"item": {"type": kind, "id": kind, "status": "pending"}})
+                   for kind in ("fileChange", "fileRead", "webFetch", "delegation", "webSearch",
+                                "search", "imageView", "imageGeneration", "planSteps", "contextCompaction")]
+        self.threads += [thread(str(i)) for i in range(len(events))]
+        self.reconnect(5)
+        self.advance(5)
+        for i, (kind, data) in enumerate(events):
+            self.event(kind, data, ref=str(i))
+        self.settle()
+        self.assertEqual(self.tells(), [tell("worker")])
+        for i in range(len(events)):
+            self.assertEqual(self.episode()["sent"][str(i)]["delivery"], "superseded")
+
+    def test_old_unrelated_empty_and_bookkeeping_events_do_not_block(self):
+        self.progress()
+        self.advance(1)
+        self.reconnect(5)
+        self.advance(5)
+        self.event("item/completed", {"item": {"type": "agentMessage", "text": "Other turn"}}, turn="old")
+        self.event("item/started", {"item": {"type": "agentMessage", "text": ""}})
+        self.event("item/started", {"item": {"type": "reasoning", "summary": [], "content": []}})
+        self.event("item/agentMessage/delta", {"delta": ""})
+        self.event("thread/tokenUsage/updated", {"totalTokens": 10})
+        self.event("turn/input/accepted", {"clientRequestId": "accepted"})
+        self.settle()
+        self.assertEqual(self.tells(), [tell("worker")])
+
+    def test_unfinished_command_is_left_alone_but_completed_old_one_is_not(self):
+        self.threads += [thread("completed"), thread("old-turn")]
+        for ref in ("worker", "completed", "old-turn"):
+            self.event("item/started", {"item": {"type": "commandExecution", "id": "cmd", "status": "pending"}}, ref)
+        self.event("item/completed", {"item": {"type": "commandExecution", "id": "cmd", "status": "completed"}}, "completed")
+        self.event("turn/started", {}, "old-turn", turn="new-turn")
+        self.advance(120)
+        self.reconnect(5)
+        self.settle()
+        self.assertEqual(sorted(t[2] for t in self.tells()), ["completed", "old-turn"])
+        self.assertEqual(self.episode()["sent"]["worker"]["delivery"], "superseded")
+
+    def test_progress_arriving_during_final_preflight_blocks_send(self):
+        self.reconnect(5)
+        def read(args):
+            if args == ["thread", "log", "worker", "--all"]:
+                self.event("item/reasoning/textDelta", {"delta": "Thinking"})
+            return self.read_bb(args)
+        bb.bb_json.side_effect = read
+        self.settle()
+        self.assertEqual(self.tells(), [])
+
+    def test_completion_racing_status_read_cancels_nudge(self):
+        self.reconnect(5)
+        self.advance(10)
+        self.event("turn/completed", {"status": "completed"})
+        self.settle()
+        self.assertEqual(self.tells(), [])
+        self.assertEqual(self.episode()["sent"]["worker"]["delivery"], "superseded")
+
+    def test_new_turn_is_not_blocked_by_old_turn_output_or_commands(self):
+        self.reconnect(5)
+        self.advance(10)
+        self.progress()
+        self.event("item/started", {"item": {"type": "commandExecution", "id": "cmd", "status": "pending"}})
+        self.event("turn/started", {}, turn="new-turn")
+        self.settle()
+        self.assertEqual(self.tells(), [tell("worker")])
+
+    def test_bad_progress_scope_defers_without_reserving_a_send(self):
+        self.reconnect(5)
+        self.progress()
+        self.events["worker"][-1]["scope"] = None
+        self.settle()
+        self.assertEqual(self.tells(), [])
+        self.assertNotIn("worker", self.episode()["sent"])
+        self.assertNotIn("worker", self.state["steer"]["last_sent"])
+
+    def test_missing_turn_or_progress_timestamp_defers_send(self):
+        self.reconnect(5)
+        self.advance(5)
+        self.progress()
+        self.events["worker"][-1].pop("createdAt")
+        self.settle()
+        self.assertEqual(self.tells(), [])
+        self.assertNotIn("worker", self.episode()["sent"])
+        def read(args):
+            return [] if args[:2] == ["thread", "log"] else self.read_bb(args)
+        bb.bb_json.side_effect = read
+        self.settle()
+        self.assertEqual(self.tells(), [])
+        self.assertNotIn("worker", self.episode()["sent"])
 
 
 if __name__ == "__main__":

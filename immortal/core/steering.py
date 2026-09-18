@@ -1,9 +1,8 @@
-"""ADR 0052: after a reconnect or wake, steer every still-active BB thread once.
+"""After reconnect or wake, nudge active BB threads that have not resumed.
 
-An episode opens when the watcher comes back online or notices that the Mac
-slept. Its candidates are the threads active at that moment; each gets one
-"keep going" once its provider answers again. Per-thread send history survives
-episodes and restarts; recent or still-pending nudges are skipped.
+Candidates get 30 seconds after provider readiness to make progress themselves.
+Per-thread send history survives episodes and restarts; recent or still-pending
+nudges are skipped.
 """
 
 from __future__ import annotations
@@ -26,6 +25,7 @@ WAKE_GAP_SECS = 5
 # Providers that never come back within this window get no stale nudge.
 EPISODE_WINDOW_SECS = 900
 STEER_COOLDOWN_SECS = 120
+PROGRESS_GRACE_SECS = 30
 USER_MESSAGE_LOOKBACK_SECS = 60
 _last_mono = None
 
@@ -134,6 +134,8 @@ def tick(state, now=None):
         save_state(state)
         return
     if not online:
+        for candidate in (episode.get("candidates") or {}).values():
+            candidate.pop("ready_at", None)
         return
     if not isinstance(episode.get("candidates"), dict):
         if not _snapshot(state, episode):
@@ -153,7 +155,11 @@ def _steer_candidates(state, episode):
     # Anchor to the reconnect tick, not delayed scans, readiness, or dispatch.
     user_input_since = iso_after(parse_ts(episode.get("since") or episode["at"]), -USER_MESSAGE_LOOKBACK_SECS)
     for ref, candidate in episode["candidates"].items():
-        if ref in episode["sent"] or not _ready(candidate):
+        if ref in episode["sent"]:
+            continue
+        if not _ready(candidate):
+            if candidate.pop("ready_at", None) is not None:
+                save_state(state)
             continue
         now = datetime.now(timezone.utc)
         previous = last_sent.get(ref)
@@ -162,6 +168,13 @@ def _steer_candidates(state, episode):
             episode["sent"][ref] = {"at": now_iso(now), "delivery": "cooldown"}
             save_state(state)
             log("steer_skipped", ref=ref, reason="cooldown")
+            continue
+        ready_at = parse_ts(candidate.get("ready_at"))
+        if ready_at is None:
+            candidate["ready_at"] = now_iso(now)
+            save_state(state)
+            ready_at = now
+        if (now - ready_at).total_seconds() < PROGRESS_GRACE_SECS:
             continue
         # Reserve first: a crash after bb accepts the steer must not resend.
         episode["sent"][ref] = {"at": now_iso(now), "delivery": "unknown"}
@@ -179,6 +192,7 @@ def _steer_candidates(state, episode):
         try:
             delivery = host_bb.steer({"ref": ref, **candidate,
                                      "user_input_since": user_input_since,
+                                     "progress_since": episode.get("since") or episode["at"],
                                      "last_steer_at": previous.get("since", previous.get("at")) if previous else None})
         except Exception as exc:  # one thread must not stop the others
             log("steer_error", ref=ref, error=str(exc))

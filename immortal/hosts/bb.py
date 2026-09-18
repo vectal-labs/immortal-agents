@@ -383,8 +383,58 @@ def _steer_pending(events, since):
     return not output and not attempt.get("finished_reason")
 
 
+def _steer_progress(events, since):
+    """Cancel this nudge for current-turn progress or an unfinished command.
+
+    BB has no command liveness probe. Conservatively leave an unfinished command
+    alone, even if quiet; an old start is not proof it hung during the outage.
+    """
+    cutoff = parse_ts(since)
+    turn = next((_object(row.get("scope", {})).get("turnId") for row in reversed(events)
+                 if row.get("type") in ("turn/started", "turn/input/accepted")
+                 and not _object(row.get("data")).get("parentToolCallId")), None)
+    if cutoff is None or not isinstance(turn, str) or not turn:
+        raise BbUnavailable("missing reconnect progress cutoff or current turn")
+    commands = set()
+    for row in events:
+        if _object(row.get("scope", {})).get("turnId") != turn:
+            continue
+        data = _object(row.get("data"))
+        kind = row.get("type")
+        if kind == "turn/completed" and not data.get("parentToolCallId"):
+            return True  # The status read raced completion; do not start another turn.
+        item = _object(data.get("item", {}))
+        item_type, item_id = item.get("type"), item.get("id")
+        progress = False
+        if kind in ("item/started", "item/completed"):
+            if item_type == "commandExecution" and isinstance(item_id, str):
+                if kind == "item/started" and item.get("status") == "pending":
+                    commands.add(item_id)
+                else:
+                    commands.discard(item_id)
+            progress = (item_type in recovery_events.BB_TOOL_TYPES
+                        or item_type in ("webSearch", "search", "imageView", "imageGeneration",
+                                         "planSteps", "contextCompaction")
+                        or item_type in ("agentMessage", "plan") and _has_text(item.get("text"))
+                        or item_type == "reasoning" and any(_has_text(text) for text in
+                            [*item.get("summary", []), *item.get("content", [])]))
+        elif kind in ("item/agentMessage/delta", "item/reasoning/textDelta",
+                      "item/reasoning/summaryTextDelta", "item/commandExecution/outputDelta",
+                      "item/fileChange/outputDelta", "item/plan/delta"):
+            progress = _has_text(data.get("delta"))
+        elif kind in ("item/toolCall/progress", "item/mcpToolCall/progress"):
+            progress = True
+        if progress:
+            at = _ms_to_dt(row.get("createdAt"))
+            if at is None:
+                raise BbUnavailable("bb returned progress without a timestamp")
+            if at >= cutoff:
+                return True
+    return bool(commands)
+
+
 def steer(target):
-    """Re-read the thread, then steer RESUME_TEXT into its live turn."""
+    """Re-read the thread and progress before steering RESUME_TEXT into its turn."""
     ref = target["ref"]
     try:
         current = _object(_object(bb_json(["thread", "show", ref])).get("thread"))
@@ -400,6 +450,9 @@ def steer(target):
         if (any(recovery_events.input_text(row.get("content")) == RESUME_TEXT for row in queued)
                 or _steer_pending(events, target.get("last_steer_at"))):
             return "pending"
+        if _steer_progress(events, target.get("progress_since")):
+            log("steer_skipped", ref=ref, reason="agent_progress")
+            return "superseded"
     except (BbUnavailable, BbRuntimeError, OSError, subprocess.TimeoutExpired, ValueError, TypeError, KeyError):
         return "not_sent"  # Read-only so far.
     try:
